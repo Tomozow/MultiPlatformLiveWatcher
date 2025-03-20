@@ -67,6 +67,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // 更新キューを保持する変数
   let updateQueue = [];
+
+  // API制限エラーフラグ
+  let platformErrors = {
+    twitch: false,
+    youtube: false,
+    twitcasting: false
+  };
   
   /**
    * 初期化処理
@@ -113,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     try {
       // 非同期で並行して複数のデータを読み込む
-      const [storedData, lastTab] = await Promise.all([
+      const [storedData, lastTab, apiErrors] = await Promise.all([
         // 保存された配信データを取得
         new Promise(resolve => {
           chrome.storage.local.get(['streams', 'favorites', 'settings', 'lastUpdate'], (data) => {
@@ -125,8 +132,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           chrome.storage.local.get(['lastActiveTab'], (data) => {
             resolve(data.lastActiveTab || 'all');
           });
+        }),
+        // API制限エラー情報を取得
+        new Promise(resolve => {
+          chrome.storage.local.get(['platformErrors'], (data) => {
+            resolve(data.platformErrors || {});
+          });
         })
       ]);
+
+      // API制限エラー情報を設定
+      if (apiErrors && typeof apiErrors === 'object') {
+        platformErrors = { ...platformErrors, ...apiErrors };
+      }
+
+      // YouTubeのAPI制限エラーがある場合は通知
+      if (platformErrors.youtube) {
+        showAPILimitError('youtube');
+      }
       
       // 設定を適用
       if (storedData.settings) {
@@ -556,11 +579,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.log(`「${currentPlatformTab}」タブに表示する配信数(フィルタ前): ${displayableStreams.length}`);
     }
     
+    // 更新中かどうかを確認
+    const isUpdating = isAnyPlatformUpdating();
+    
     // データがない場合かつ更新中でない場合
-    if (displayableStreams.length === 0 && !isAnyPlatformUpdating()) {
-      if (noStreams) noStreams.classList.remove('hidden');
-      return;
+    if (displayableStreams.length === 0) {
+      // 現在のタブがYouTubeで、YouTubeのAPIエラーがある場合は特別処理
+      if ((currentPlatformTab === 'youtube' || currentPlatformTab === 'all') && platformErrors.youtube) {
+        showAPILimitError('youtube');
+        if (noStreams) noStreams.classList.add('hidden');
+        return;
+      }
+      
+      // 更新中でなければ「配信なし」を表示
+      if (!isUpdating) {
+        if (noStreams) noStreams.classList.remove('hidden');
+        return;
+      } else {
+        if (noStreams) noStreams.classList.add('hidden');
+      }
     } else {
+      // データがある場合は「配信なし」を非表示
       if (noStreams) noStreams.classList.add('hidden');
     }
     
@@ -578,17 +617,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log(`表示する配信数(フィルタ後): ${displayableStreams.length}`);
     
-    // 結果がない場合
-    if (displayableStreams.length === 0 && !isAnyPlatformUpdating()) {
-      if (noStreams) noStreams.classList.remove('hidden');
+    // フィルター適用後の結果がない場合
+    if (displayableStreams.length === 0 && !isUpdating) {
+      if (noStreams) {
+        noStreams.classList.remove('hidden');
+        noStreams.textContent = 'フィルター条件に一致する配信はありません';
+      }
       return;
     }
     
     // 更新中かどうかによって処理を分ける
-    if (isAnyPlatformUpdating()) {
+    if (isUpdating) {
       if (noStreams) noStreams.classList.add('hidden');
     } else {
-      if (noStreams && displayableStreams.length === 0) noStreams.classList.remove('hidden');
+      if (noStreams && displayableStreams.length === 0) {
+        noStreams.classList.remove('hidden');
+      }
     }
     
     // CSS Grid列数を設定（アイコンのみなので5列または6列に）
@@ -600,6 +644,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       const icon = createStreamIcon(stream);
       streamsGrid.appendChild(icon);
     });
+  }
+  
+  /**
+   * API制限エラーを表示
+   * @param {string} platform - プラットフォーム名
+   */
+  function showAPILimitError(platform) {
+    if (!errorMessage) return;
+    
+    let message = '';
+    if (platform === 'youtube') {
+      message = 'YouTube API制限に達しました。YouTube設定から確認してください。既存のデータを表示しています。';
+    } else {
+      message = `${getPlatformName(platform)}のAPI制限に達しました。設定を確認してください。`;
+    }
+    
+    errorMessage.classList.remove('hidden');
+    errorMessage.textContent = message;
   }
   
   /**
@@ -891,6 +953,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       updatingPlatforms[platform] = false;
       
       if (response && response.success) {
+        // APIエラーフラグをリセット
+        platformErrors[platform] = false;
+        
         // プラットフォーム別のデータを更新（確実に正しいプラットフォームのデータのみを保存）
         if (platform === 'twitch') {
           platformStreams.twitch = response.streams.filter(stream => stream.platform === 'twitch');
@@ -912,6 +977,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         console.log(`${platform}の更新完了: 全${allStreams.length}件の配信`);
         if (statusMessage) statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(), 'time')}`;
+        
+        // エラーメッセージを非表示（成功時）
+        if (errorMessage) {
+          errorMessage.classList.add('hidden');
+        }
         
         // 表示を更新（現在のタブに関係なく更新）
         displayStreams();
@@ -952,6 +1022,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       sendUpdateRequest(nextPlatform);
     } else {
       console.log('すべてのプラットフォームの更新が完了しました');
+      
+      // 更新完了後にエラーステータスをストレージに保存
+      chrome.storage.local.set({ 'platformErrors': platformErrors }, () => {
+        console.log('プラットフォームエラーステータスを保存しました:', platformErrors);
+      });
     }
   }
   
@@ -993,10 +1068,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 特定のプラットフォームの更新を終了
     updatingPlatforms[platform] = false;
     
-    // エラーメッセージを表示
-    if (errorMessage) {
-      errorMessage.classList.remove('hidden');
-      errorMessage.textContent = `${getPlatformName(platform)}の更新中にエラーが発生しました: ${error || '不明なエラー'}`;
+    // クォータ超過エラーの場合はフラグを設定
+    if (error && (error.includes('quota') || error.includes('クォータ') || error.includes('制限'))) {
+      platformErrors[platform] = true;
+      
+      // エラーメッセージをより具体的に設定
+      let errorMsg = '';
+      if (platform === 'youtube') {
+        errorMsg = 'YouTube APIのクォータ(利用上限)に達しました。現在のデータを表示しています。24時間後に再度お試しください。';
+      } else {
+        errorMsg = `${getPlatformName(platform)}のAPIに接続できません。現在のデータを表示しています。`;
+      }
+      
+      if (errorMessage) {
+        errorMessage.classList.remove('hidden');
+        errorMessage.textContent = errorMsg;
+      }
+    } else {
+      // その他のエラー
+      if (errorMessage) {
+        errorMessage.classList.remove('hidden');
+        errorMessage.textContent = `${getPlatformName(platform)}の更新中にエラーが発生しました: ${error || '不明なエラー'}`;
+      }
     }
     
     // キャッシュデータは維持したまま表示を更新

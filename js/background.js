@@ -1071,77 +1071,102 @@ class YouTubeApiClient {
     this.UPCOMING_CACHE_DURATION = 30 * 60 * 1000;          // 30分
   }
   
-  /**
-   * APIリクエストを送信
-   * @param {string} endpoint - APIエンドポイント
-   * @param {Object} params - URLパラメータ
-   * @param {boolean} useAuth - 認証を使用するかどうか
-   * @returns {Promise<Object>} レスポンスデータ
-   */
-  async request(endpoint, params = {}, useAuth = true) {
-    const url = new URL(`${this.baseUrl}${endpoint}`);
+/**
+ * APIリクエストを送信
+ * @param {string} endpoint - APIエンドポイント
+ * @param {Object} params - URLパラメータ
+ * @param {boolean} useAuth - 認証を使用するかどうか
+ * @returns {Promise<Object>} レスポンスデータ
+ */
+async request(endpoint, params = {}, useAuth = true) {
+  const url = new URL(`${this.baseUrl}${endpoint}`);
+  
+  // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
+  url.searchParams.append('key', this.apiKey);
+  
+  // パラメータを追加
+  Object.entries(params).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach(item => {
+        url.searchParams.append(key, item);
+      });
+    } else {
+      url.searchParams.append(key, value);
+    }
+  });
+  
+  try {
+    const headers = {};
     
-    // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
-    url.searchParams.append('key', this.apiKey);
+    if (useAuth && this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
     
-    // パラメータを追加
-    Object.entries(params).forEach(([key, value]) => {
-      if (Array.isArray(value)) {
-        value.forEach(item => {
-          url.searchParams.append(key, item);
-        });
-      } else {
-        url.searchParams.append(key, value);
-      }
+    console.log(`YouTube API リクエスト: ${endpoint}`, 
+              {useAuth: useAuth, hasToken: !!this.accessToken});
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers
     });
     
-    try {
-      const headers = {};
+    if (!response.ok) {
+      // 詳細なエラー情報を取得
+      let errorDetails = '';
+      let errorJson = null;
       
-      if (useAuth && this.accessToken) {
-        headers['Authorization'] = `Bearer ${this.accessToken}`;
+      try {
+        errorJson = await response.json();
+        errorDetails = JSON.stringify(errorJson);
+      } catch (e) {
+        errorDetails = await response.text();
       }
       
-      console.log(`YouTube API リクエスト: ${endpoint}`, 
-                  {useAuth: useAuth, hasToken: !!this.accessToken});
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers
-      });
-      
-      if (!response.ok) {
-        // 詳細なエラー情報を取得
-        let errorDetails = '';
-        try {
-          const errorJson = await response.json();
-          errorDetails = JSON.stringify(errorJson);
-        } catch (e) {
-          errorDetails = await response.text();
-        }
-        
-        if (response.status === 401) {
-          const error = new Error(`認証エラー: ${errorDetails}`);
-          error.isAuthError = true;
-          throw error;
-        } else if (response.status === 403) {
-          const error = new Error(`権限エラー: ${errorDetails}`);
-          error.isAuthError = true;
-          throw error;
-        } else if (response.status === 429) {
+      if (response.status === 401) {
+        const error = new Error(`認証エラー: ${errorDetails}`);
+        error.isAuthError = true;
+        throw error;
+      } else if (response.status === 403) {
+        // クォータ超過エラーの特別処理
+        if (errorJson && errorJson.error && 
+            (errorJson.error.errors?.some(e => e.reason === 'quotaExceeded') || 
+             errorDetails.includes('quota'))) {
           const error = new Error(`クォータ超過: ${errorDetails}`);
           error.isQuotaError = true;
+          console.error('YouTube APIクォータ制限に達しました:', errorDetails);
           throw error;
         }
-        throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
+        
+        const error = new Error(`権限エラー: ${errorDetails}`);
+        error.isAuthError = true;
+        throw error;
+      } else if (response.status === 429) {
+        const error = new Error(`レート制限超過: ${errorDetails}`);
+        error.isRateLimitError = true;
+        throw error;
       }
-      
-      return response.json();
-    } catch (error) {
-      console.error(`YouTube API Error at ${endpoint}:`, error);
-      throw error;
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
     }
+    
+    return response.json();
+  } catch (error) {
+    console.error(`YouTube API Error at ${endpoint}:`, error);
+    
+    // エラーに重要な情報がない場合は補足
+    if (!error.isAuthError && !error.isQuotaError && !error.isRateLimitError) {
+      // エラーメッセージにクォータ関連の文字列が含まれていないか確認
+      if (error.message && (
+          error.message.includes('quota') || 
+          error.message.includes('クォータ') || 
+          error.message.includes('利用上限')
+        )) {
+        error.isQuotaError = true;
+      }
+    }
+    
+    throw error;
   }
+}
   
   /**
    * チャンネル登録情報を取得（キャッシュ対応）
@@ -1202,17 +1227,32 @@ async getLiveStreams() {
     // 現在時刻を取得
     const now = Date.now();
     
+    // キャッシュが有効な場合はキャッシュを使用
+    if (this.cachedLiveStreams.length > 0 && 
+        now - this.lastLiveStreamsCheck < this.LIVESTREAMS_CACHE_DURATION) {
+      console.log('YouTube: ライブ配信キャッシュを使用（更新間隔内）');
+      return this.cachedLiveStreams;
+    }
+    
     // 認証情報を確認
     if (!this.accessToken) {
       console.log('YouTube: アクセストークンがありません');
       
       // 認証エラーを通知用のフラグを設定
-      await Utils.setStorageData({
-        youtubeAuthError: {
-          timestamp: now,
-          message: 'YouTube APIの認証情報が不足しています。YouTube設定タブで認証を行ってください。'
-        }
+      await new Promise(resolve => {
+        chrome.storage.local.set({
+          youtubeAuthError: {
+            timestamp: now,
+            message: 'YouTube APIの認証情報が不足しています。YouTube設定タブで認証を行ってください。'
+          }
+        }, resolve);
       });
+      
+      // 既存のキャッシュがあれば返す
+      if (this.cachedLiveStreams.length > 0) {
+        console.log('YouTube: 認証エラーのため既存のキャッシュを使用');
+        return this.cachedLiveStreams;
+      }
       
       return [];
     }
@@ -1221,157 +1261,217 @@ async getLiveStreams() {
     if (this.expiresAt && this.expiresAt < now) {
       console.log('YouTube: アクセストークンの期限が切れています');
       
-      await Utils.setStorageData({
-        youtubeAuthError: {
-          timestamp: now,
-          message: 'YouTube APIのアクセストークンの期限が切れています。YouTube設定タブで再認証を行ってください。'
-        }
+      await new Promise(resolve => {
+        chrome.storage.local.set({
+          youtubeAuthError: {
+            timestamp: now,
+            message: 'YouTube APIのアクセストークンの期限が切れています。YouTube設定タブで再認証を行ってください。'
+          }
+        }, resolve);
       });
       
       // トークンリフレッシュを試みる
       if (typeof refreshYouTubeToken === 'function') {
         refreshYouTubeToken();
+      }
+      
+      // 既存のキャッシュがあれば返す
+      if (this.cachedLiveStreams.length > 0) {
+        console.log('YouTube: トークン期限切れのため既存のキャッシュを使用');
+        return this.cachedLiveStreams;
       }
       
       return [];
     }
 
     // チャンネル情報を取得して登録チャンネルを取得
-    const subscriptionsResponse = await this.request('/subscriptions', {
-      part: 'snippet',
-      mine: true,
-      maxResults: 50,
-      order: 'relevance'
-    }, true);
-    
-    console.log(`YouTube: ${subscriptionsResponse.items?.length || 0}件のチャンネル登録情報を取得しました`);
-    
-    if (!subscriptionsResponse.items || subscriptionsResponse.items.length === 0) {
-      return [];
-    }
-    
-    // チャンネルIDのリストを作成
-    const channelIds = subscriptionsResponse.items.map(item => 
-      item.snippet.resourceId.channelId
-    );
-    
-    // チャンネルごとのライブ配信を確認
-    let liveStreams = [];
-    
-    // APIの制限を考慮し、バッチサイズを小さくする
-    const batchSize = 5;
-    
-    // チャンネルをbatchSizeずつに分割してバッチ処理
-    for (let i = 0; i < channelIds.length; i += batchSize) {
-      const batchIds = channelIds.slice(i, i + batchSize);
+    try {
+      const subscriptionsResponse = await this.request('/subscriptions', {
+        part: 'snippet',
+        mine: true,
+        maxResults: 50,
+        order: 'relevance'
+      }, true);
       
-      // 各チャンネルの現在のライブ配信を検索
-      for (const channelId of batchIds) {
-        try {
-          // レート制限を避けるためにより長く待機
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const searchResponse = await this.request('/search', {
-            part: 'snippet',
-            channelId: channelId,
-            eventType: 'live',
-            type: 'video',
-            maxResults: 1
-          }, false);
-          
-          if (searchResponse.items && searchResponse.items.length > 0) {
-            // ライブ配信の詳細情報を取得
-            const videoIds = searchResponse.items.map(item => item.id.videoId);
+      console.log(`YouTube: ${subscriptionsResponse.items?.length || 0}件のチャンネル登録情報を取得しました`);
+      
+      if (!subscriptionsResponse.items || subscriptionsResponse.items.length === 0) {
+        return this.cachedLiveStreams.length > 0 ? this.cachedLiveStreams : [];
+      }
+      
+      // チャンネルIDのリストを作成
+      const channelIds = subscriptionsResponse.items.map(item => 
+        item.snippet.resourceId.channelId
+      );
+      
+      // チャンネルごとのライブ配信を確認
+      let liveStreams = [];
+      
+      // APIの制限を考慮し、バッチサイズを小さくする
+      const batchSize = 5;
+      
+      // チャンネルをbatchSizeずつに分割してバッチ処理
+      for (let i = 0; i < channelIds.length; i += batchSize) {
+        const batchIds = channelIds.slice(i, i + batchSize);
+        
+        // 各チャンネルの現在のライブ配信を検索
+        for (const channelId of batchIds) {
+          try {
+            // レート制限を避けるためにより長く待機
+            await new Promise(resolve => setTimeout(resolve, 500));
             
-            // 再度待機してAPI制限を回避
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            const videosResponse = await this.request('/videos', {
-              part: 'snippet,liveStreamingDetails,statistics',
-              id: videoIds.join(',')
+            const searchResponse = await this.request('/search', {
+              part: 'snippet',
+              channelId: channelId,
+              eventType: 'live',
+              type: 'video',
+              maxResults: 1
             }, false);
             
-            if (videosResponse.items) {
-              liveStreams = liveStreams.concat(videosResponse.items.map(video => ({
-                id: video.id,
-                platform: 'youtube',
-                channelId: video.snippet.channelId,
-                channelName: video.snippet.channelTitle,
-                title: video.snippet.title,
-                url: `https://www.youtube.com/watch?v=${video.id}`,
-                thumbnail: video.snippet.thumbnails.medium?.url || null,
-                channelIcon: null, // チャンネルアイコンは別途取得
-                viewerCount: parseInt(video.liveStreamingDetails?.concurrentViewers || '0'),
-                startTime: video.liveStreamingDetails?.actualStartTime || null,
-                category: video.snippet.categoryId
-              })));
+            if (searchResponse.items && searchResponse.items.length > 0) {
+              // ライブ配信の詳細情報を取得
+              const videoIds = searchResponse.items.map(item => item.id.videoId);
+              
+              // 再度待機してAPI制限を回避
+              await new Promise(resolve => setTimeout(resolve, 300));
+              
+              const videosResponse = await this.request('/videos', {
+                part: 'snippet,liveStreamingDetails,statistics',
+                id: videoIds.join(',')
+              }, false);
+              
+              if (videosResponse.items) {
+                liveStreams = liveStreams.concat(videosResponse.items.map(video => ({
+                  id: video.id,
+                  platform: 'youtube',
+                  channelId: video.snippet.channelId,
+                  channelName: video.snippet.channelTitle,
+                  title: video.snippet.title,
+                  url: `https://www.youtube.com/watch?v=${video.id}`,
+                  thumbnail: video.snippet.thumbnails.medium?.url || null,
+                  channelIcon: null, // チャンネルアイコンは別途取得
+                  viewerCount: parseInt(video.liveStreamingDetails?.concurrentViewers || '0'),
+                  startTime: video.liveStreamingDetails?.actualStartTime || null,
+                  category: video.snippet.categoryId
+                })));
+              }
+            }
+          } catch (error) {
+            console.error(`YouTubeチャンネル ${channelId} の配信チェックエラー:`, error);
+            
+            // クォータ超過エラーの場合は処理を中断
+            if (error.isQuotaError || (error.message && error.message.includes('quota'))) {
+              console.log('YouTube: クォータ超過のため配信チェックを中断します');
+              // エラーにクォータ超過フラグを設定して投げる
+              const quotaError = new Error('YouTubeのAPIクォータ(利用上限)に達しました');
+              quotaError.isQuotaError = true;
+              throw quotaError;
+            }
+            
+            // その他のエラーは続行
+            continue;
+          }
+        }
+        
+        // バッチ間でのウェイト
+        if (i + batchSize < channelIds.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      console.log(`YouTube: ${liveStreams.length}件のライブ配信を取得しました`);
+      
+      // チャンネルアイコンの取得（存在する場合のみ）
+      if (liveStreams.length > 0) {
+        // ユニークなチャンネルIDのリストを作成
+        const uniqueChannelIds = [...new Set(liveStreams.map(stream => stream.channelId))];
+        
+        // バッチサイズを小さくして処理
+        const iconBatchSize = 10;
+        const channelIcons = {};
+        
+        for (let i = 0; i < uniqueChannelIds.length; i += iconBatchSize) {
+          try {
+            const batchIds = uniqueChannelIds.slice(i, i + iconBatchSize);
+            
+            // API呼び出しの間隔を空ける
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            const channelsResponse = await this.request('/channels', {
+              part: 'snippet',
+              id: batchIds.join(',')
+            }, false);
+            
+            if (channelsResponse.items) {
+              channelsResponse.items.forEach(channel => {
+                channelIcons[channel.id] = channel.snippet.thumbnails.default?.url || null;
+              });
+            }
+          } catch (error) {
+            console.error('YouTubeチャンネルアイコン取得エラー:', error);
+            // クォータ超過エラーを確認
+            if (error.isQuotaError || (error.message && error.message.includes('quota'))) {
+              // チャンネルアイコンなしで続行
+              console.log('YouTube: クォータ超過のためチャンネルアイコン取得をスキップします');
+              break;
             }
           }
-        } catch (error) {
-          console.error(`YouTubeチャンネル ${channelId} の配信チェックエラー:`, error);
-          // エラーが発生しても続行
-          continue;
         }
+        
+        // チャンネルアイコンを追加
+        liveStreams = liveStreams.map(stream => ({
+          ...stream,
+          channelIcon: channelIcons[stream.channelId] || null
+        }));
       }
       
-      // バッチ間でのウェイト
-      if (i + batchSize < channelIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // キャッシュを更新
+      this.cachedLiveStreams = liveStreams;
+      this.lastLiveStreamsCheck = now;
+      
+      return liveStreams;
+    } catch (error) {
+      console.error('YouTube サブスクリプション取得エラー:', error);
+      
+      // クォータ超過エラーか確認してフラグをセット
+      if (error.isQuotaError || (error.message && error.message.includes('quota'))) {
+        const quotaError = new Error('YouTubeのAPIクォータ(利用上限)に達しました');
+        quotaError.isQuotaError = true;
+        
+        // エラー情報を保存
+        await new Promise(resolve => {
+          chrome.storage.local.set({
+            youtubeQuotaError: {
+              timestamp: now,
+              message: 'YouTube APIのクォータ(利用上限)に達しました。24時間後に再度お試しください。'
+            }
+          }, resolve);
+        });
+        
+        throw quotaError;
       }
+      
+      // 既存のキャッシュがあればそれを返す
+      if (this.cachedLiveStreams.length > 0) {
+        console.log('YouTube: エラーにより既存のキャッシュを使用');
+        return this.cachedLiveStreams;
+      }
+      
+      // エラーを再スロー
+      throw error;
     }
-    
-    console.log(`YouTube: ${liveStreams.length}件のライブ配信を取得しました`);
-    
-    // チャンネルアイコンの取得（存在する場合のみ）
-    if (liveStreams.length > 0) {
-      // ユニークなチャンネルIDのリストを作成
-      const uniqueChannelIds = [...new Set(liveStreams.map(stream => stream.channelId))];
-      
-      // バッチサイズを小さくして処理
-      const iconBatchSize = 10;
-      const channelIcons = {};
-      
-      for (let i = 0; i < uniqueChannelIds.length; i += iconBatchSize) {
-        try {
-          const batchIds = uniqueChannelIds.slice(i, i + iconBatchSize);
-          
-          // API呼び出しの間隔を空ける
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          const channelsResponse = await this.request('/channels', {
-            part: 'snippet',
-            id: batchIds.join(',')
-          }, false);
-          
-          if (channelsResponse.items) {
-            channelsResponse.items.forEach(channel => {
-              channelIcons[channel.id] = channel.snippet.thumbnails.default?.url || null;
-            });
-          }
-        } catch (error) {
-          console.error('YouTubeチャンネルアイコン取得エラー:', error);
-          // エラーが発生しても続行
-        }
-      }
-      
-      // チャンネルアイコンを追加
-      liveStreams = liveStreams.map(stream => ({
-        ...stream,
-        channelIcon: channelIcons[stream.channelId] || null
-      }));
-    }
-    
-    return liveStreams;
   } catch (error) {
     console.error('YouTube ライブ配信取得エラー:', error);
     
     // 認証エラーの場合
     if (error.isAuthError) {
-      await Utils.setStorageData({
-        youtubeAuthError: {
-          timestamp: Date.now(),
-          message: 'YouTube APIの認証に失敗しました。認証情報が無効か期限切れの可能性があります。YouTube設定タブで再認証を行ってください。'
-        }
+      await new Promise(resolve => {
+        chrome.storage.local.set({
+          youtubeAuthError: {
+            timestamp: Date.now(),
+            message: 'YouTube APIの認証に失敗しました。認証情報が無効か期限切れの可能性があります。YouTube設定タブで再認証を行ってください。'
+          }
+        }, resolve);
       });
       
       // トークンリフレッシュを試みる
@@ -1380,7 +1480,28 @@ async getLiveStreams() {
       }
     }
     
-    // エラーがあっても空の配列を返す
+    // クォータ超過エラーの場合
+    if (error.isQuotaError || (error.message && error.message.includes('quota'))) {
+      console.log('YouTube: クォータ超過エラーを検出しました。既存データを維持します。');
+      
+      // エラー情報を保存
+      await new Promise(resolve => {
+        chrome.storage.local.set({
+          youtubeQuotaError: {
+            timestamp: Date.now(),
+            message: 'YouTube APIのクォータ(利用上限)に達しました。24時間後に再度お試しください。'
+          }
+        }, resolve);
+      });
+    }
+    
+    // エラーがあっても既存のキャッシュデータがあればそれを返す
+    if (this.cachedLiveStreams.length > 0) {
+      console.log('YouTube: エラーによりキャッシュされたライブ配信データを使用');
+      return this.cachedLiveStreams;
+    }
+    
+    // それでもなければ空の配列を返す
     return [];
   }
 }
