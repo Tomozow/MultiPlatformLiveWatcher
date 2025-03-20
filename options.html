@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多プラットフォーム配信通知 - 設定</title>
+  <link rel="stylesheet" href="css/options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>配信通知拡張機能の設定</h1>
+    </header>
+    
+    <main>
+      <div class="tabs">
+        <button class="tab-button active" data-tab="general">一般設定</button>
+        <button class="tab-button" data-tab="twitch">Twitch</button>
+        <button class="tab-button" data-tab="youtube">YouTube</button>
+        <button class="tab-button" data-tab="twitcasting">TwitCasting</button>
+        <button class="tab-button" data-tab="filter">フィルター</button>
+        <button class="tab-button" data-tab="schedule">スケジュール</button>
+      </div>
+      
+      <div id="general" class="tab-content active">
+        <h2>一般設定</h2>
+        
+        <div class="form-group">
+          <label for="update-interval">更新間隔</label>
+          <select id="update-interval">
+            <option value="1">1分</option>
+            <option value="2">2分</option>
+            <option value="5">5分</option>
+            <option value="10">10分</option>
+            <option value="15">15分</option>
+            <option value="30">30分</option>
+            <option value="60">60分</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="notifications-enabled" checked>
+            通知を有効にする
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="badge-enabled" checked>
+            バッジを表示する
+          </label>
+        </div>
+        
+        <!-- 新しい表示設定オプションを追加 -->
+        <h3>配信アイコン表示設定</h3>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="hover-info-enabled" checked>
+            マウスオーバー時の情報を表示する
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="viewer-count-enabled" checked>
+            視聴者数を表示する
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="platform-icon-enabled" checked>
+            プラットフォームアイコンを表示する
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="favorite-icon-enabled" checked>
+            お気に入りアイコンを表示する
+          </label>
+        </div>
+        
+        <!-- 更新順序の設定を追加 -->
+        <h3>プラットフォーム更新順序</h3>
+        <div class="form-group">
+          <p>配信情報を取得する順序を設定します。上から順に更新されます。</p>
+          <div class="platform-order-container">
+            <div class="platform-order-item" data-platform="twitch">
+              <span class="drag-handle">⋮⋮</span>
+              <span>Twitch</span>
+            </div>
+            <div class="platform-order-item" data-platform="youtube">
+              <span class="drag-handle">⋮⋮</span>
+              <span>YouTube</span>
+            </div>
+            <div class="platform-order-item" data-platform="twitcasting">
+              <span class="drag-handle">⋮⋮</span>
+              <span>TwitCasting</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="twitch" class="tab-content">
+        <h2>Twitch設定</h2>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="twitch-enabled">
+            Twitchを有効にする
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label for="twitch-client-id">Client ID</label>
+          <input type="text" id="twitch-client-id" placeholder="Twitch Client ID">
+        </div>
+        
+        <div class="auth-section">
+          <div class="redirect-uri">
+            <p>リダイレクトURI:</p>
+            <code id="twitch-redirect-uri"></code>
+            <button id="copy-twitch-uri" class="small-button">コピー</button>
+          </div>
+          
+          <div class="auth-status">
+            <p>認証状態: <span id="twitch-auth-status">未認証</span></p>
+            <button id="twitch-auth-button" class="auth-button" disabled>認証する</button>
+            <button id="twitch-clear-auth" class="small-button">クリア</button>
+          </div>
+        </div>
+        
+        <div class="help-text">
+          <p>Twitchの認証を設定するためには:</p>
+          <ol>
+            <li><a href="https://dev.twitch.tv/console/apps" target="_blank">Twitch開発者コンソール</a>でアプリを作成</li>
+            <li>リダイレクトURIに上記のURIを設定</li>
+            <li>生成されたClient IDをこちらに入力</li>
+            <li>認証ボタンをクリックしてTwitchアカウントと連携</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div id="youtube" class="tab-content">
+        <h2>YouTube設定</h2>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="youtube-enabled">
+            YouTubeを有効にする
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label for="youtube-api-key">API Key</label>
+          <input type="text" id="youtube-api-key" placeholder="YouTube API Key">
+        </div>
+        
+        <div class="form-group">
+          <label for="youtube-client-id">クライアントID</label>
+          <input type="text" id="youtube-client-id" placeholder="YOUR_CLIENT_ID_HERE.apps.googleusercontent.com">
+        </div>
+        
+        <div class="auth-section">
+          <div class="redirect-uri">
+            <p>リダイレクトURI:</p>
+            <code id="youtube-redirect-uri">https://oauth-redirect.googleusercontent.com/r/egcekfgogihhngfjkiiljcknilfanfdl</code>
+            <button id="copy-youtube-uri" class="small-button">コピー</button>
+          </div>
+          
+          <div class="auth-status">
+            <p>認証状態: <span id="youtube-auth-status">未認証</span></p>
+            <button id="youtube-auth-button" class="auth-button">認証する</button>
+            <button id="youtube-clear-auth" class="small-button">クリア</button>
+          </div>
+        </div>
+        
+        <div class="help-text">
+          <p>YouTubeの連携には、APIキーとクライアントIDが必要です：</p>
+          
+          <h4>APIキーとクライアントIDの取得方法:</h4>
+          <ol>
+            <li><a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a>にアクセスし、Googleアカウントでログイン</li>
+            <li>ページ上部のプロジェクト選択メニューから「新しいプロジェクト」を選択して作成</li>
+            <li>左側のナビゲーションメニューから「APIとサービス」→「ライブラリ」を選択</li>
+            <li>検索ボックスで「YouTube Data API v3」を検索し、選択して「有効にする」をクリック</li>
+            <li>「APIとサービス」→「認証情報」を選択</li>
+            <li>「認証情報を作成」→「APIキー」をクリックしてAPIキーを作成</li>
+            <li>作成されたAPIキーをコピーして上記の「API Key」欄に入力</li>
+            <li>次に「認証情報を作成」→「OAuth クライアント ID」を選択</li>
+            <li>アプリケーションの種類として「ウェブアプリケーション」を選択</li>
+            <li>名前を入力（例: 「配信通知拡張機能」）</li>
+            <li>「承認済みのリダイレクトURI」セクションで「URIを追加」をクリック</li>
+            <li>上部に表示されている「リダイレクトURI」を正確にコピー＆ペースト</li>
+            <li>「作成」ボタンをクリックしてOAuthクライアントIDを作成</li>
+            <li>作成されたクライアントIDをコピーして上記の「クライアントID」欄に入力</li>
+            <li><strong>重要:</strong> セキュリティのため、APIキーに以下の制限を設定してください：
+              <ul>
+                <li>作成したAPIキーの横にある鉛筆アイコン（編集）をクリック</li>
+                <li>「アプリケーションの制限」セクションで「HTTPリファラー」を選択</li>
+                <li>「ウェブサイトの制限」項目で「項目を追加」をクリック</li>
+                <li>「chrome-extension://<あなたの拡張機能ID>/*」と入力（拡張機能IDは、Chromeの拡張機能管理ページで確認できます）</li>
+                <li>「APIの制限」セクションで「APIを制限」を選択</li>
+                <li>ドロップダウンリストから「YouTube Data API v3」にチェックを入れる</li>
+                <li>「保存」ボタンをクリックして設定を完了</li>
+              </ul>
+            </li>
+          </ol>
+          
+          <h4>拡張機能の認証設定:</h4>
+          <p>Googleアカウントでの認証を行うには、APIキーとクライアントIDを入力後、「認証する」ボタンをクリックしてください。
+             ポップアップウィンドウが表示され、YouTubeアカウントへのアクセス許可を求められます。</p>
+          
+          <h4>API使用制限についての注意事項:</h4>
+          <ul>
+            <li>YouTube Data API v3には無料枠で1日あたり10,000ユニットの制限があります</li>
+            <li>配信データの取得には約100ユニット/リクエストが使用されます</li>
+            <li>更新頻度が高いと、APIクォータをすぐに使い切る可能性があるため注意してください</li>
+            <li>APIクォータの確認は「APIとサービス」→「ダッシュボード」→「クォータ」から確認できます</li>
+            <li>クォータを超えた場合は、Google Cloud Consoleで課金を有効にすることで追加のクォータを購入できます</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div id="twitcasting" class="tab-content">
+        <h2>TwitCasting設定</h2>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="twitcasting-enabled">
+            TwitCastingを有効にする
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label for="twitcasting-client-id">Client ID</label>
+          <input type="text" id="twitcasting-client-id" placeholder="TwitCasting Client ID">
+        </div>
+        
+        <div class="form-group">
+          <label for="twitcasting-client-secret">Client Secret</label>
+          <input type="password" id="twitcasting-client-secret" placeholder="TwitCasting Client Secret">
+        </div>
+        
+        <div class="form-group user-ids">
+          <label>配信者ID</label>
+          <div class="user-id-list" id="twitcasting-user-ids">
+            <!-- ユーザーIDリストが動的に生成されます -->
+          </div>
+          <div class="user-id-input">
+            <input type="text" id="new-user-id" placeholder="追加するユーザーID">
+            <button id="add-user-id">追加</button>
+          </div>
+        </div>
+        
+        <div class="help-text">
+          <p>TwitCastingの認証を設定するためには:</p>
+          <ol>
+            <li><a href="https://twitcasting.tv/developer.php" target="_blank">TwitCasting開発者サイト</a>でアプリケーションを登録</li>
+            <li>生成されたClient IDとClient Secretをこちらに入力</li>
+            <li>通知したい配信者のユーザーIDを追加（例: username）</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div id="filter" class="tab-content">
+        <h2>フィルター設定</h2>
+        
+        <div class="form-group">
+          <label>デフォルトフィルター</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="default-platform" value="twitch" checked> Twitch</label>
+            <label><input type="checkbox" name="default-platform" value="youtube" checked> YouTube</label>
+            <label><input type="checkbox" name="default-platform" value="twitcasting" checked> TwitCasting</label>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>保存済みフィルター</label>
+          <div class="saved-filters" id="saved-filters-list">
+            <!-- 保存済みフィルターが動的に生成されます -->
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>お気に入り配信者</label>
+          <div class="favorites-list" id="favorites-list">
+            <!-- お気に入り配信者が動的に生成されます -->
+          </div>
+        </div>
+      </div>
+      
+      <div id="schedule" class="tab-content">
+        <h2>スケジュール設定</h2>
+        
+        <div class="form-group">
+          <label for="schedule-update-interval">スケジュール更新間隔</label>
+          <select id="schedule-update-interval">
+            <option value="15">15分</option>
+            <option value="30">30分</option>
+            <option value="60">1時間</option>
+            <option value="120">2時間</option>
+            <option value="360">6時間</option>
+            <option value="720">12時間</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="default-schedule-view">デフォルト表示モード</label>
+          <select id="default-schedule-view">
+            <option value="day">日別表示</option>
+            <option value="week">週間表示</option>
+            <option value="category">カテゴリ別表示</option>
+            <option value="timeline">タイムライン表示</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="default-reminder-time">デフォルトリマインダー時間</label>
+          <select id="default-reminder-time">
+            <option value="5">5分前</option>
+            <option value="10">10分前</option>
+            <option value="15">15分前</option>
+            <option value="30">30分前</option>
+            <option value="60">1時間前</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="calendar-export">カレンダーエクスポート</label>
+          <div class="export-buttons">
+            <button id="export-ical">iCalendarにエクスポート</button>
+            <button id="export-google">Googleカレンダーにエクスポート</button>
+          </div>
+        </div>
+      </div>
+    </main>
+    
+    <footer>
+      <button id="save-button">保存</button>
+      <div id="status-message"></div>
+    </footer>
+  </div>
+  
+  <script src="js/utils.js"></script>
+  <script src="js/options.js"></script>
+</body>
+</html>

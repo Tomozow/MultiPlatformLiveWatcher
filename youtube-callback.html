@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube認証コールバック</title>
+  <script>
+    // URLからアクセストークンを抽出
+    function extractAccessToken() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      return {
+        accessToken: params.get('access_token'),
+        expiresIn: params.get('expires_in'),
+        tokenType: params.get('token_type')
+      };
+    }
+    
+    window.onload = function() {
+      const authInfo = extractAccessToken();
+      
+      if (authInfo.accessToken) {
+        console.log("トークン情報を取得しました:", authInfo);
+        
+        // 認証情報をバックグラウンドスクリプトに送信
+        chrome.runtime.sendMessage({ 
+          action: 'youtubeAuthenticated', 
+          authInfo: authInfo 
+        }, function(response) {
+          console.log("認証情報を送信しました:", response);
+        });
+        
+        // 設定ページに遷移
+        const optionsUrl = chrome.runtime.getURL('options.html') + 
+          `?youtube_auth=true&access_token=${authInfo.accessToken}`;
+        
+        window.location.href = optionsUrl;
+      } else {
+        document.getElementById('message').textContent = 
+          '認証エラー: アクセストークンが見つかりませんでした。設定ページに戻って再度お試しください。';
+      }
+    };
+  </script>
+</head>
+<body>
+  <h1>YouTube認証処理中...</h1>
+  <p id="message">このページは自動的に閉じられます。閉じない場合は<a href="options.html">ここ</a>をクリックしてください。</p>
+</body>
+</html>

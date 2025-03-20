@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "多プラットフォーム配信通知",
+  "description": "Twitch、YouTube、TwitCastingの配信状況を一元管理",
+  "version": "1.0.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icons/icon.png"
+  },
+  "icons": {
+    "512": "icons/icon.png"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "identity",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*",
+    "https://oauth-redirect.googleusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["youtube_callback.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

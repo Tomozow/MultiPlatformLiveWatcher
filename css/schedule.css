@@ -1,0 +1,726 @@
+/* ベース設定 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'Meiryo UI', sans-serif;
+  font-size: 14px;
+  color: #333;
+  background-color: #f5f5f5;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ヘッダー */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+header h1 {
+  font-size: 24px;
+  font-weight: 500;
+  color: #444;
+}
+
+.header-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.header-controls button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #f0f0f0;
+}
+
+.header-controls button:hover {
+  background-color: #e5e5e5;
+}
+
+.header-controls img {
+  width: 20px;
+  height: 20px;
+}
+
+/* フィルターパネル */
+#filter-panel {
+  background-color: #f8f8f8;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border: 1px solid #ddd;
+}
+
+.filter-section {
+  margin-bottom: 12px;
+}
+
+.filter-section h3 {
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #444;
+  font-weight: 500;
+}
+
+.checkbox-group {
+  display: flex;
+  gap: 15px;
+}
+
+.filter-section input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.filter-actions button {
+  padding: 8px 15px;
+  background-color: #6441a5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.filter-actions button:hover {
+  background-color: #7d5bbe;
+}
+
+#reset-filter {
+  background-color: #888;
+}
+
+#reset-filter:hover {
+  background-color: #999;
+}
+
+/* 表示モード切り替え */
+.view-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.view-buttons {
+  display: flex;
+}
+
+.view-button {
+  padding: 8px 15px;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #555;
+}
+
+.view-button:not(:last-child) {
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.view-button:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.view-button.active {
+  background-color: #6441a5;
+  color: white;
+  border-color: #6441a5;
+}
+
+.date-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.date-navigation button {
+  padding: 8px 12px;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.date-navigation button:hover {
+  background-color: #e5e5e5;
+}
+
+#current-date {
+  font-weight: 500;
+  padding: 0 10px;
+}
+
+#today-button {
+  background-color: #6441a5;
+  color: white;
+  border-color: #6441a5;
+}
+
+#today-button:hover {
+  background-color: #7d5bbe;
+}
+
+/* スケジュール表示 */
+.schedule-container {
+  flex: 1;
+  position: relative;
+  min-height: 400px;
+}
+
+#loader, #error-message, #no-schedules {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: #777;
+}
+
+#error-message {
+  color: #e74c3c;
+}
+
+.schedule-view {
+  display: none;
+}
+
+.schedule-view.active {
+  display: block;
+}
+
+/* 日別表示 */
+.day-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.schedule-card {
+  display: flex;
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+
+.schedule-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.schedule-time {
+  width: 100px;
+  background-color: #f0f0f0;
+  padding: 15px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #eee;
+}
+
+.start-time {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.end-time {
+  font-size: 12px;
+  color: #777;
+}
+
+.schedule-info {
+  flex: 1;
+  padding: 15px;
+  position: relative;
+}
+
+.platform-badge {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+  border: 1px solid #ddd;
+}
+
+.platform-badge.twitch {
+  background-color: #6441a5;
+  color: white;
+}
+
+.platform-badge.youtube {
+  background-color: #ff0000;
+  color: white;
+}
+
+.platform-badge.twitcasting {
+  background-color: #0084ef;
+  color: white;
+}
+
+.platform-badge img {
+  width: 16px;
+  height: 16px;
+}
+
+.reminder-badge {
+  position: absolute;
+  top: 15px;
+  right: 50px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffd700;
+  color: #333;
+  font-size: 12px;
+}
+
+.schedule-title {
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 5px;
+  padding-right: 40px;
+}
+
+.channel-name {
+  margin-bottom: 5px;
+  color: #555;
+}
+
+.category {
+  font-size: 12px;
+  color: #777;
+  margin-top: 5px;
+}
+
+/* 週間表示 */
+.week-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.day-header {
+  text-align: center;
+  padding: 10px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.day-header.today {
+  background-color: #6441a5;
+  color: white;
+}
+
+.week-schedule {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  min-height: 400px;
+}
+
+.day-column {
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 100%;
+}
+
+.day-column.today {
+  background-color: #f5f0ff;
+  border: 1px solid #e1d1ff;
+}
+
+.day-column .schedule-mini-card {
+  margin-bottom: 10px;
+  background-color: white;
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 4px solid #ddd;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.day-column .schedule-mini-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.day-column .schedule-mini-card.twitch {
+  border-left-color: #6441a5;
+}
+
+.day-column .schedule-mini-card.youtube {
+  border-left-color: #ff0000;
+}
+
+.day-column .schedule-mini-card.twitcasting {
+  border-left-color: #0084ef;
+}
+
+.mini-time {
+  font-size: 12px;
+  color: #777;
+  margin-bottom: 5px;
+}
+
+.mini-title {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-channel {
+  font-size: 12px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* カテゴリ別表示 */
+.category-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.category-group {
+  margin-bottom: 20px;
+}
+
+.category-header {
+  font-size: 18px;
+  font-weight: 500;
+  color: #444;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #6441a5;
+}
+
+.category-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 15px;
+}
+
+/* タイムライン表示 */
+.timeline-scale {
+  display: flex;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+  height: 30px;
+  position: relative;
+}
+
+.hour-marker {
+  position: absolute;
+  font-size: 12px;
+  color: #777;
+  transform: translateX(-50%);
+}
+
+.timeline-schedule {
+  position: relative;
+  min-height: 400px;
+}
+
+.timeline-channel {
+  margin-bottom: 15px;
+  position: relative;
+}
+
+.channel-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 150px;
+  padding: 5px;
+  text-align: right;
+  border-right: 1px solid #ddd;
+  height: 100%;
+  background-color: #f9f9f9;
+  font-weight: 500;
+}
+
+.channel-timeline {
+  margin-left: 150px;
+  position: relative;
+  height: 50px;
+  background-color: #f5f5f5;
+}
+
+.timeline-event {
+  position: absolute;
+  top: 5px;
+  height: 40px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.15s ease;
+}
+
+.timeline-event.twitch {
+  background-color: #f0e6ff;
+  border-color: #6441a5;
+}
+
+.timeline-event.youtube {
+  background-color: #ffe6e6;
+  border-color: #ff0000;
+}
+
+.timeline-event.twitcasting {
+  background-color: #e6f4ff;
+  border-color: #0084ef;
+}
+
+.timeline-event:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+/* モーダル */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 6px;
+  width: 90%;
+  max-width: 600px;
+  position: relative;
+}
+
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 24px;
+  cursor: pointer;
+  color: #aaa;
+}
+
+.close-button:hover {
+  color: #333;
+}
+
+.schedule-detail {
+  margin-top: 10px;
+}
+
+.schedule-detail h2 {
+  font-size: 20px;
+  margin-bottom: 10px;
+  padding-right: 40px;
+}
+
+.schedule-detail .platform-badge {
+  top: 0;
+  right: 0;
+}
+
+.schedule-detail .channel-name {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.schedule-detail .schedule-time {
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.schedule-detail .category {
+  margin-bottom: 15px;
+  padding: 5px 10px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.schedule-detail .description {
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-line;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+#open-stream {
+  padding: 8px 15px;
+  background-color: #6441a5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#open-stream:hover {
+  background-color: #7d5bbe;
+}
+
+#reminder-time {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  flex: 1;
+}
+
+#set-reminder {
+  padding: 8px 15px;
+  background-color: #ffd700;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#set-reminder:hover {
+  background-color: #ffea3e;
+}
+
+/* フッター */
+footer {
+  margin-top: 30px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+  text-align: center;
+  color: #777;
+  font-size: 12px;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .week-schedule {
+    grid-template-columns: 1fr;
+  }
+  
+  .week-header {
+    display: none;
+  }
+  
+  .day-column {
+    margin-bottom: 15px;
+  }
+  
+  .day-column::before {
+    content: attr(data-date);
+    display: block;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: #555;
+  }
+  
+  .schedule-time {
+    width: 80px;
+  }
+  
+  .category-items {
+    grid-template-columns: 1fr;
+  }
+  
+  .channel-label {
+    width: 100px;
+  }
+  
+  .channel-timeline {
+    margin-left: 100px;
+  }
+  
+  .view-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .date-navigation {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

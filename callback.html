@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Twitch認証コールバック</title>
+  <script>
+    // 設定ページを開き、パラメータを渡す
+    window.onload = function() {
+      chrome.runtime.sendMessage({ action: 'twitchCallback', hash: window.location.hash });
+      
+      // 設定ページに遷移
+      window.location.href = chrome.runtime.getURL('options.html') + window.location.hash;
+    };
+  </script>
+</head>
+<body>
+  <h1>認証処理中...</h1>
+  <p>このページは自動的に閉じられます。閉じない場合は<a href="options.html">ここ</a>をクリックしてください。</p>
+</body>
+</html>

@@ -1,0 +1,375 @@
+/* ベース設定 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'Meiryo UI', sans-serif;
+  font-size: 14px;
+  width: 450px;
+  max-height: 600px;
+  overflow-x: hidden;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ヘッダー */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: #2a2a2a;
+  color: white;
+  position: relative; /* 追加: 情報表示のための位置指定 */
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.header-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.header-controls button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: white;
+  border-radius: 4px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.header-controls button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 配信情報の表示 - ヘッダーに追加 */
+.stream-hover-info {
+  position: absolute;
+  bottom: -80px;
+  left: 0;
+  right: 0;
+  background-color: rgba(42, 42, 42, 0.95);
+  color: white;
+  padding: 10px;
+  border-radius: 0 0 6px 6px;
+  z-index: 100;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  display: none;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  opacity: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stream-hover-info.visible {
+  display: block;
+  opacity: 1;
+}
+
+.stream-hover-info .channel-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.stream-hover-info .stream-details {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.stream-hover-info .game-category {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* タブ */
+.tabs {
+  display: flex;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+
+.tab-button.active {
+  font-weight: bold;
+  color: #6441a5;
+}
+
+.tab-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: #6441a5;
+}
+
+/* フィルターパネル */
+#filter-panel {
+  background-color: #f8f8f8;
+  padding: 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+.filter-section {
+  margin-bottom: 12px;
+}
+
+.filter-section h3 {
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #444;
+}
+
+.checkbox-group {
+  display: flex;
+  gap: 15px;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.range-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.range-slider input {
+  flex: 1;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filter-actions button {
+  padding: 6px 12px;
+  background-color: #6441a5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.filter-actions button:hover {
+  background-color: #7d5bbe;
+}
+
+#reset-filter {
+  background-color: #888;
+}
+
+#reset-filter:hover {
+  background-color: #999;
+}
+
+.saved-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.saved-filters select {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.saved-filters button {
+  padding: 6px 8px;
+  background-color: #6441a5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.saved-filters button:hover {
+  background-color: #7d5bbe;
+}
+
+#delete-filter {
+  background-color: #e74c3c;
+}
+
+#delete-filter:hover {
+  background-color: #f86e5d;
+}
+
+/* 配信グリッド */
+.streams-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+#loader, #error-message, #no-streams {
+  text-align: center;
+  padding: 20px;
+  color: #777;
+}
+
+#error-message {
+  color: #e74c3c;
+}
+
+/* アイコンのみのグリッド表示 */
+#streams-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 5列表示 */
+  gap: 10px;
+  justify-content: center;
+  padding: 10px;
+}
+
+/* アイコンのみのスタイル */
+.stream-icon {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.stream-icon:hover {
+  transform: scale(1.1);
+}
+
+.stream-icon img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.stream-platform-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 10px;
+  border: 1px solid #fff;
+}
+
+.viewer-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 1px 4px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: bold;
+  min-width: 14px;
+  text-align: center;
+}
+
+.favorite-icon {
+  position: absolute;
+  bottom: -2px;
+  left: -2px;
+  cursor: pointer;
+  color: #ffd700;
+  font-size: 14px;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.5));
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fff;
+}
+
+/* フッター */
+footer {
+  padding: 8px 15px;
+  background-color: #f5f5f5;
+  border-top: 1px solid #ddd;
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+}
+
+/* YouTubeエラーリンクスタイル */
+.youtube-error-link {
+  color: #ff0000;
+  text-decoration: underline;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  display: inline-block;
+  padding: 5px 10px;
+  border: 1px solid #ff0000;
+  border-radius: 4px;
+  background-color: rgba(255, 0, 0, 0.1);
+}
+
+.youtube-error-link:hover {
+  background-color: rgba(255, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+#error-message {
+  text-align: center;
+  padding: 15px;
+  color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+#error-message p {
+  margin: 5px 0;
+}

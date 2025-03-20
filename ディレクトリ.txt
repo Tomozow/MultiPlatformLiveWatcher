@@ -1,0 +1,16 @@
+/
+├── manifest.json
+├── icons/
+│   ├── icon.png
+├── css/
+│   ├── popup.css
+│   └── options.css
+├── js/
+│   ├── background.js
+│   ├── options.js
+│   ├── popup.js
+│   └── utils.js
+├── popup.html
+├── options.html
+├── callback.html
+└── youtube_callback.html

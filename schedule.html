@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>配信スケジュール</title>
+  <link rel="stylesheet" href="css/schedule.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>配信スケジュール</h1>
+      <div class="header-controls">
+        <button id="refresh-button" title="更新"><img src="images/refresh.svg" alt="更新"></button>
+        <button id="filter-toggle" title="フィルター"><img src="images/filter.svg" alt="フィルター"></button>
+        <button id="home-button" title="ホーム"><img src="images/home.svg" alt="ホーム"></button>
+      </div>
+    </header>
+    
+    <!-- フィルターパネル -->
+    <div id="filter-panel" class="hidden">
+      <div class="filter-section">
+        <h3>プラットフォーム</h3>
+        <div class="checkbox-group">
+          <label><input type="checkbox" name="platform" value="twitch" checked> Twitch</label>
+          <label><input type="checkbox" name="platform" value="youtube" checked> YouTube</label>
+          <label><input type="checkbox" name="platform" value="twitcasting" checked> TwitCasting</label>
+        </div>
+      </div>
+      <div class="filter-section">
+        <h3>カテゴリ/ゲーム</h3>
+        <input type="text" id="category-filter" placeholder="カテゴリまたはゲーム名">
+      </div>
+      <div class="filter-section">
+        <h3>チャンネル名</h3>
+        <input type="text" id="channel-filter" placeholder="チャンネル名">
+      </div>
+      <div class="filter-section">
+        <label><input type="checkbox" id="favorites-only"> お気に入りのみ表示</label>
+      </div>
+      <div class="filter-actions">
+        <button id="apply-filter">適用</button>
+        <button id="reset-filter">リセット</button>
+      </div>
+    </div>
+    
+    <!-- 表示モード切り替え -->
+    <div class="view-controls">
+      <div class="view-buttons">
+        <button class="view-button active" data-view="day">日別</button>
+        <button class="view-button" data-view="week">週間</button>
+        <button class="view-button" data-view="category">カテゴリ別</button>
+        <button class="view-button" data-view="timeline">タイムライン</button>
+      </div>
+      
+      <div class="date-navigation">
+        <button id="prev-date">&lt;</button>
+        <div id="current-date"></div>
+        <button id="next-date">&gt;</button>
+        <button id="today-button">今日</button>
+      </div>
+    </div>
+    
+    <!-- スケジュール表示 -->
+    <div class="schedule-container">
+      <div id="loader" class="hidden">読み込み中...</div>
+      <div id="error-message" class="hidden"></div>
+      <div id="no-schedules" class="hidden">予定されている配信はありません</div>
+      
+      <!-- 日別表示 -->
+      <div id="day-view" class="schedule-view active">
+        <div class="day-schedule" id="day-schedule-list"></div>
+      </div>
+      
+      <!-- 週間表示 -->
+      <div id="week-view" class="schedule-view">
+        <div class="week-header" id="week-header"></div>
+        <div class="week-schedule" id="week-schedule-grid"></div>
+      </div>
+      
+      <!-- カテゴリ別表示 -->
+      <div id="category-view" class="schedule-view">
+        <div class="category-schedule" id="category-schedule-list"></div>
+      </div>
+      
+      <!-- タイムライン表示 -->
+      <div id="timeline-view" class="schedule-view">
+        <div class="timeline-scale" id="timeline-scale"></div>
+        <div class="timeline-schedule" id="timeline-schedule-list"></div>
+      </div>
+    </div>
+    
+    <!-- スケジュール詳細モーダル -->
+    <div id="schedule-modal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <div class="schedule-detail">
+          <div class="platform-badge" id="modal-platform"></div>
+          <h2 id="modal-title"></h2>
+          <div class="channel-name" id="modal-channel"></div>
+          <div class="schedule-time">
+            <span id="modal-start-time"></span> - <span id="modal-end-time"></span>
+          </div>
+          <div class="category" id="modal-category"></div>
+          <div class="description" id="modal-description"></div>
+          <div class="modal-actions">
+            <button id="open-stream">配信ページを開く</button>
+            <select id="reminder-time">
+              <option value="">リマインダーなし</option>
+              <option value="5">5分前</option>
+              <option value="10">10分前</option>
+              <option value="15">15分前</option>
+              <option value="30">30分前</option>
+              <option value="60">1時間前</option>
+            </select>
+            <button id="set-reminder">リマインダーを設定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <footer>
+      <div id="status-message">最終更新: --:--</div>
+    </footer>
+  </div>
+  
+  <script src="js/utils.js"></script>
+  <script src="js/schedule.js"></script>
+</body>
+</html>

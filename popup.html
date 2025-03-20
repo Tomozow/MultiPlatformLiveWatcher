@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多プラットフォーム配信通知</title>
+  <link rel="stylesheet" href="css/popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>配信通知</h1>
+      <div class="header-controls">
+        <button id="refresh-button" title="更新">🔄</button>
+        <button id="filter-toggle" title="フィルター">🔍</button>
+        <button id="settings-button" title="設定">⚙️</button>
+        <button id="schedule-button" title="スケジュール">📅</button>
+      </div>
+      <!-- 追加：マウスオーバー時の配信情報表示エリア -->
+      <div id="stream-hover-info" class="stream-hover-info">
+        <div class="channel-title"></div>
+        <div class="stream-details"></div>
+        <div class="game-category"></div>
+      </div>
+    </header>
+
+    <!-- フィルターパネル -->
+    <div id="filter-panel" class="hidden">
+      <div class="filter-section">
+        <h3>プラットフォーム</h3>
+        <div class="checkbox-group">
+          <label><input type="checkbox" name="platform" value="twitch" checked> Twitch</label>
+          <label><input type="checkbox" name="platform" value="youtube" checked> YouTube</label>
+          <label><input type="checkbox" name="platform" value="twitcasting" checked> TwitCasting</label>
+        </div>
+      </div>
+      <div class="filter-section">
+        <h3>カテゴリ/ゲーム</h3>
+        <input type="text" id="category-filter" placeholder="カテゴリまたはゲーム名">
+      </div>
+      <div class="filter-section">
+        <h3>チャンネル名</h3>
+        <input type="text" id="channel-filter" placeholder="チャンネル名">
+      </div>
+      <div class="filter-section">
+        <h3>視聴者数</h3>
+        <div class="range-slider">
+          <input type="range" id="viewer-filter" min="0" max="10000" step="100" value="0">
+          <span id="viewer-count">0</span>人以上
+        </div>
+      </div>
+      <div class="filter-section">
+        <label><input type="checkbox" id="favorites-only"> お気に入りのみ表示</label>
+      </div>
+      <div class="filter-actions">
+        <button id="save-filter">フィルターを保存</button>
+        <button id="reset-filter">リセット</button>
+      </div>
+      <div class="saved-filters">
+        <h3>保存済みフィルター</h3>
+        <select id="saved-filter-list">
+          <option value="">選択してください</option>
+        </select>
+        <button id="load-filter">読み込み</button>
+        <button id="delete-filter">削除</button>
+      </div>
+    </div>
+
+    <!-- タブメニュー -->
+    <div class="tabs">
+      <button class="tab-button active" data-platform="all">すべて</button>
+      <button class="tab-button" data-platform="twitch">Twitch</button>
+      <button class="tab-button" data-platform="youtube">YouTube</button>
+      <button class="tab-button" data-platform="twitcasting">TwitCasting</button>
+    </div>
+
+    <!-- 配信一覧 -->
+    <div class="streams-container">
+      <div id="loader" class="hidden">読み込み中...</div>
+      <div id="error-message" class="hidden"></div>
+      <div id="no-streams" class="hidden">現在配信中のチャンネルはありません</div>
+      <div id="streams-grid"></div>
+    </div>
+
+    <footer>
+      <div id="status-message">最終更新: --:--</div>
+    </footer>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/popup.js"></script>
+</body>
+</html>
