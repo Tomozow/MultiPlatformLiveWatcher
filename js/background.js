@@ -747,18 +747,45 @@ async function refreshTwitchToken() {
   // 実際の実装では、クライアントサイドからのリフレッシュトークンの使用は推奨されないため、
   // ユーザーに再認証を促すのが適切
   
-  // 認証モードで設定ページを開く
-  chrome.runtime.openOptionsPage();
+  // 認証エラー情報を保存
+  await new Promise(resolve => {
+    chrome.storage.local.set({
+      twitchAuthError: {
+        timestamp: Date.now(),
+        message: 'Twitchの認証が切れました。設定から再認証してください。'
+      }
+    }, resolve);
+  });
   
   // エラー通知
   const notificationOptions = {
     type: 'basic',
-    iconUrl: 'images/icon128.png',
+    iconUrl: 'images/icon.png',
     title: '認証エラー',
-    message: 'Twitchの認証が切れました。設定から再認証してください。'
+    message: 'Twitchの認証が切れました。設定から再認証してください。',
+    buttons: [{ title: '設定を開く' }]
   };
   
-  chrome.notifications.create('twitch_auth_error', notificationOptions);
+  const notificationId = 'twitch_auth_error';
+  chrome.notifications.create(notificationId, notificationOptions);
+  
+  // 通知クリックハンドラ
+  chrome.notifications.onClicked.addListener(function onNotificationClicked(id) {
+    if (id === notificationId) {
+      chrome.runtime.openOptionsPage();
+      chrome.notifications.clear(notificationId);
+      chrome.notifications.onClicked.removeListener(onNotificationClicked);
+    }
+  });
+  
+  // 通知ボタンクリックハンドラ
+  chrome.notifications.onButtonClicked.addListener(function onButtonClicked(id, buttonIndex) {
+    if (id === notificationId && buttonIndex === 0) {
+      chrome.runtime.openOptionsPage();
+      chrome.notifications.clear(notificationId);
+      chrome.notifications.onButtonClicked.removeListener(onButtonClicked);
+    }
+  });
 }
 
 /**
@@ -769,18 +796,45 @@ async function refreshYouTubeToken() {
   // 実際の実装では、クライアントサイドからのリフレッシュトークンの使用は推奨されないため、
   // ユーザーに再認証を促すのが適切
   
-  // 認証モードで設定ページを開く
-  chrome.runtime.openOptionsPage();
+  // 認証エラー情報を保存
+  await new Promise(resolve => {
+    chrome.storage.local.set({
+      youtubeAuthError: {
+        timestamp: Date.now(),
+        message: 'YouTubeの認証が切れました。設定から再認証してください。'
+      }
+    }, resolve);
+  });
   
   // エラー通知
   const notificationOptions = {
     type: 'basic',
-    iconUrl: 'images/icon128.png',
+    iconUrl: 'images/icon.png',
     title: '認証エラー',
-    message: 'YouTubeの認証が切れました。設定から再認証してください。'
+    message: 'YouTubeの認証が切れました。設定から再認証してください。',
+    buttons: [{ title: '設定を開く' }]
   };
   
-  chrome.notifications.create('youtube_auth_error', notificationOptions);
+  const notificationId = 'youtube_auth_error';
+  chrome.notifications.create(notificationId, notificationOptions);
+  
+  // 通知クリックハンドラ
+  chrome.notifications.onClicked.addListener(function onNotificationClicked(id) {
+    if (id === notificationId) {
+      chrome.runtime.openOptionsPage();
+      chrome.notifications.clear(notificationId);
+      chrome.notifications.onClicked.removeListener(onNotificationClicked);
+    }
+  });
+  
+  // 通知ボタンクリックハンドラ
+  chrome.notifications.onButtonClicked.addListener(function onButtonClicked(id, buttonIndex) {
+    if (id === notificationId && buttonIndex === 0) {
+      chrome.runtime.openOptionsPage();
+      chrome.notifications.clear(notificationId);
+      chrome.notifications.onButtonClicked.removeListener(onButtonClicked);
+    }
+  });
 }
 
 /**

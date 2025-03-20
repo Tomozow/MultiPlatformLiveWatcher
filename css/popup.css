@@ -341,3 +341,72 @@ footer {
   color: #777;
   text-align: center;
 }
+
+/* API制限エラー表示用のスタイル */
+.api-error-container {
+  background-color: #ffebee;
+  border: 1px solid #ffcdd2;
+  border-left: 4px solid #f44336;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 15px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  color: #333;
+}
+
+.api-error-container p {
+  margin: 0 0 8px 0;
+}
+
+.api-error-container p:last-of-type {
+  margin-bottom: 12px;
+}
+
+.api-error-container strong {
+  color: #d32f2f;
+}
+
+.youtube-link-button {
+  display: inline-block;
+  background-color: #ff0000;
+  color: white !important;
+  text-align: center;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 12px;
+  margin-top: 5px;
+  transition: background-color 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.youtube-link-button:hover {
+  background-color: #e50000;
+  text-decoration: none !important;
+}
+
+/* エラーメッセージ全体のスタイル改善 */
+#error-message {
+  padding: 10px;
+  color: #d32f2f;
+  text-align: left;
+  border-radius: 4px;
+  margin: 10px 15px;
+  font-size: 13px;
+  max-width: calc(100% - 30px);
+  box-sizing: border-box;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: block;
+  width: auto;
+  position: relative;
+}
+
+/* エラーメッセージが非表示の場合 */
+#error-message.hidden {
+  display: none !important;
+}
