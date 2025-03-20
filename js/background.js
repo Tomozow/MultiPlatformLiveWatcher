@@ -1033,73 +1033,107 @@ class TwitchApiClient {
     }
   }
   
-  /**
-   * スケジュールを取得
-   * @returns {Promise<Array>} スケジュールデータの配列
-   */
-  async getSchedules() {
-    try {
-      // 自分のユーザーIDを取得
-      const userResponse = await this.request('/users');
-      if (!userResponse.data || userResponse.data.length === 0) {
-        throw new Error('ユーザー情報の取得に失敗しました');
-      }
+/**
+ * スケジュールを取得
+ * @returns {Promise<Array>} スケジュールデータの配列
+ */
+async getSchedules() {
+  try {
+    // 自分のユーザーIDを取得
+    const userResponse = await this.request('/users');
+    if (!userResponse.data || userResponse.data.length === 0) {
+      throw new Error('ユーザー情報の取得に失敗しました');
+    }
+    
+    const userId = userResponse.data[0].id;
+    
+    // フォロー中のチャンネルを取得
+    const followsResponse = await this.request('/channels/followed', {
+      user_id: userId,
+      first: 100
+    });
+    
+    if (!followsResponse.data) {
+      return [];
+    }
+    
+    // スケジュールデータを取得
+    let schedulesData = [];
+    
+    // バッチサイズを小さくして処理負荷を分散
+    const batchSize = 5;
+    const follows = followsResponse.data;
+    
+    // バッチごとに処理
+    for (let i = 0; i < follows.length; i += batchSize) {
+      const batch = follows.slice(i, i + batchSize);
       
-      const userId = userResponse.data[0].id;
-      
-      // フォロー中のチャンネルを取得 - 新しいエンドポイントを使用
-      const followsResponse = await this.request('/channels/followed', {
-        user_id: userId,
-        first: 100
-      });
-      
-      if (!followsResponse.data) {
-        return [];
-      }
-      
-      // スケジュールデータを取得
-      let schedulesData = [];
-      
-      for (const follow of followsResponse.data) {
+      // 各配信者のスケジュールを個別に取得し、エラーを個別に処理
+      const batchPromises = batch.map(async (follow) => {
         try {
+          // スケジュールエンドポイントを試す
           const scheduleResponse = await this.request('/schedule', {
             broadcaster_id: follow.broadcaster_id
           });
           
           if (scheduleResponse.data && scheduleResponse.data.segments) {
-            schedulesData = schedulesData.concat(
-              scheduleResponse.data.segments.map(segment => ({
-                broadcasterId: follow.broadcaster_id,
-                broadcasterName: follow.broadcaster_name || follow.broadcaster_login,
-                segment
-              }))
-            );
+            return scheduleResponse.data.segments.map(segment => ({
+              broadcasterId: follow.broadcaster_id,
+              broadcasterName: follow.broadcaster_name || follow.broadcaster_login,
+              segment
+            }));
           }
         } catch (error) {
-          // スケジュールがない場合はスキップ
-          continue;
+          // 404エラーは静かに無視する - スケジュールが存在しない正常なケース
+          if (error.message && error.message.includes('404')) {
+            console.log(`${follow.broadcaster_name}のスケジュールはありません`);
+            return [];
+          }
+          
+          // それ以外のエラーはコンソールに記録するが処理を続行
+          console.warn(`${follow.broadcaster_name}のスケジュール取得エラー:`, error);
+          return [];
         }
-      }
+        
+        return [];
+      });
       
-      // データを標準フォーマットに変換
-      return schedulesData.map(item => ({
-        id: item.segment.id,
-        platform: 'twitch',
-        channelId: item.broadcasterId,
-        channelName: item.broadcasterName,
-        title: item.segment.title,
-        url: `https://twitch.tv/${item.broadcasterName}`,
-        thumbnail: '', // スケジュールにはサムネイルがない
-        startTime: item.segment.start_time,
-        endTime: item.segment.end_time,
-        category: item.segment.category ? item.segment.category.name : '',
-        description: ''
-      }));
-    } catch (error) {
-      console.error('Twitch スケジュール取得エラー:', error);
-      throw error;
+      // バッチ内のすべてのプロミスを解決
+      const batchResults = await Promise.all(batchPromises);
+      
+      // 結果をフラット化して追加
+      batchResults.forEach(results => {
+        if (results && results.length > 0) {
+          schedulesData = schedulesData.concat(results);
+        }
+      });
+      
+      // APIレート制限を考慮して少し待機
+      if (i + batchSize < follows.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
+    
+    // データを標準フォーマットに変換
+    return schedulesData.map(item => ({
+      id: item.segment.id,
+      platform: 'twitch',
+      channelId: item.broadcasterId,
+      channelName: item.broadcasterName,
+      title: item.segment.title,
+      url: `https://twitch.tv/${item.broadcasterName}`,
+      thumbnail: '', // スケジュールにはサムネイルがない
+      startTime: item.segment.start_time,
+      endTime: item.segment.end_time,
+      category: item.segment.category ? item.segment.category.name : '',
+      description: ''
+    }));
+  } catch (error) {
+    console.error('Twitch スケジュール取得エラー:', error);
+    // エラー時は空配列を返す
+    return [];
   }
+}
 }
 
 /**
