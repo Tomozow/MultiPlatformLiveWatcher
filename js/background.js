@@ -802,109 +802,43 @@ class TwitchApiClient {
   async request(endpoint, params = {}) {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     
-// パラメータを追加
-  Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach(item => {
-        url.searchParams.append(key, item);
-      });
-    } else {
-      url.searchParams.append(key, value);
-    }
-  });
-  
-  try {
-    const headers = {};
-    
-    if (useAuth && this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
-    
-    console.log(`YouTube API リクエスト: ${endpoint}`, 
-                {useAuth: useAuth, hasToken: !!this.accessToken});
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers
+    // パラメータを追加
+    Object.entries(params).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        // 配列の場合、各項目を個別のパラメータとして追加
+        value.forEach(item => {
+          url.searchParams.append(key, item);
+        });
+      } else {
+        url.searchParams.append(key, value);
+      }
     });
     
-    if (!response.ok) {
-      // 詳細なエラー情報を取得
-      let errorDetails = '';
-      let errorData = null;
-      
-      try {
-        errorData = await response.json();
-        errorDetails = JSON.stringify(errorData);
-      } catch (e) {
-        try {
-          errorDetails = await response.text();
-        } catch (e2) {
-          errorDetails = `Status: ${response.status} ${response.statusText}`;
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Client-ID': this.clientId,
+          'Authorization': `Bearer ${this.accessToken}`
         }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          const error = new Error('認証エラー');
+          error.isAuthError = true;
+          throw error;
+        }
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
       
-      console.error(`YouTube API エラー: ${response.status} ${response.statusText}`, errorData);
-      
-      if (response.status === 401) {
-        const error = new Error(`認証エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 403) {
-        const error = new Error(`権限エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 429 || (errorData && errorData.error && errorData.error.errors && 
-                errorData.error.errors.some(err => err.reason === 'quotaExceeded'))) {
-        console.error('YouTube API クォータ超過エラーを検出しました');
-        // API制限エラーをストレージに保存
-        await Utils.setStorageData({
-          youtubeApiLimitError: {
-            timestamp: Date.now(),
-            message: 'YouTubeのAPI制限に達しました。直接YouTubeで配信を確認してください。',
-            url: 'https://www.youtube.com/live'
-          }
-        });
-        
-        const error = new Error(`クォータ超過: ${errorDetails}`);
-        error.isQuotaError = true;
-        throw error;
-      }
-      
-      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
+      return response.json();
+    } catch (error) {
+      console.error('Twitch API Error:', error);
+      throw error;
     }
-    
-    return response.json();
-  } catch (error) {
-    console.error(`YouTube API Error at ${endpoint}:`, error);
-    
-    // エラーメッセージからクォータ超過を検出する追加チェック
-    if (error.message && (error.message.includes('quota') || 
-        error.message.includes('クォータ') || 
-        error.message.includes('Quota') || 
-        error.message.includes('exceeded') || 
-        error.message.includes('limit'))) {
-      
-      console.error('エラーメッセージからYouTube API クォータ超過を検出しました');
-      error.isQuotaError = true;
-      
-      // API制限エラーをストレージに保存
-      try {
-        await Utils.setStorageData({
-          youtubeApiLimitError: {
-            timestamp: Date.now(),
-            message: 'YouTubeのAPI制限に達しました。直接YouTubeで配信を確認してください。',
-            url: 'https://www.youtube.com/live'
-          }
-        });
-      } catch (e) {
-        console.error('API制限エラーの保存に失敗:', e);
-      }
-    }
-    
-    throw error;
   }
-}  
+  
   /**
    * フォロー中のライブ配信を取得
    * @returns {Promise<Array>} 配信データの配列
@@ -1137,77 +1071,77 @@ class YouTubeApiClient {
     this.UPCOMING_CACHE_DURATION = 30 * 60 * 1000;          // 30分
   }
   
-/**
- * APIリクエストを送信
- * @param {string} endpoint - APIエンドポイント
- * @param {Object} params - URLパラメータ
- * @param {boolean} useAuth - 認証を使用するかどうか
- * @returns {Promise<Object>} レスポンスデータ
- */
-async request(endpoint, params = {}, useAuth = true) {
-  const url = new URL(`${this.baseUrl}${endpoint}`);
-  
-  // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
-  url.searchParams.append('key', this.apiKey);
-  
-  // パラメータを追加
-  Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach(item => {
-        url.searchParams.append(key, item);
-      });
-    } else {
-      url.searchParams.append(key, value);
-    }
-  });
-  
-  try {
-    const headers = {};
+  /**
+   * APIリクエストを送信
+   * @param {string} endpoint - APIエンドポイント
+   * @param {Object} params - URLパラメータ
+   * @param {boolean} useAuth - 認証を使用するかどうか
+   * @returns {Promise<Object>} レスポンスデータ
+   */
+  async request(endpoint, params = {}, useAuth = true) {
+    const url = new URL(`${this.baseUrl}${endpoint}`);
     
-    if (useAuth && this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
+    // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
+    url.searchParams.append('key', this.apiKey);
     
-    console.log(`YouTube API リクエスト: ${endpoint}`, 
-                {useAuth: useAuth, hasToken: !!this.accessToken});
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers
+    // パラメータを追加
+    Object.entries(params).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(item => {
+          url.searchParams.append(key, item);
+        });
+      } else {
+        url.searchParams.append(key, value);
+      }
     });
     
-    if (!response.ok) {
-      // 詳細なエラー情報を取得
-      let errorDetails = '';
-      try {
-        const errorJson = await response.json();
-        errorDetails = JSON.stringify(errorJson);
-      } catch (e) {
-        errorDetails = await response.text();
+    try {
+      const headers = {};
+      
+      if (useAuth && this.accessToken) {
+        headers['Authorization'] = `Bearer ${this.accessToken}`;
       }
       
-      if (response.status === 401) {
-        const error = new Error(`認証エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 403) {
-        const error = new Error(`権限エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 429) {
-        const error = new Error(`クォータ超過: ${errorDetails}`);
-        error.isQuotaError = true;
-        throw error;
+      console.log(`YouTube API リクエスト: ${endpoint}`, 
+                  {useAuth: useAuth, hasToken: !!this.accessToken});
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers
+      });
+      
+      if (!response.ok) {
+        // 詳細なエラー情報を取得
+        let errorDetails = '';
+        try {
+          const errorJson = await response.json();
+          errorDetails = JSON.stringify(errorJson);
+        } catch (e) {
+          errorDetails = await response.text();
+        }
+        
+        if (response.status === 401) {
+          const error = new Error(`認証エラー: ${errorDetails}`);
+          error.isAuthError = true;
+          throw error;
+        } else if (response.status === 403) {
+          const error = new Error(`権限エラー: ${errorDetails}`);
+          error.isAuthError = true;
+          throw error;
+        } else if (response.status === 429) {
+          const error = new Error(`クォータ超過: ${errorDetails}`);
+          error.isQuotaError = true;
+          throw error;
+        }
+        throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
       }
-      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
+      
+      return response.json();
+    } catch (error) {
+      console.error(`YouTube API Error at ${endpoint}:`, error);
+      throw error;
     }
-    
-    return response.json();
-  } catch (error) {
-    console.error(`YouTube API Error at ${endpoint}:`, error);
-    throw error;
   }
-}
   
   /**
    * チャンネル登録情報を取得（キャッシュ対応）
@@ -1267,13 +1201,6 @@ async getLiveStreams() {
   try {
     // 現在時刻を取得
     const now = Date.now();
-    
-    // キャッシュが有効な場合はキャッシュを返す
-    if (this.cachedLiveStreams.length > 0 && 
-        now - this.lastLiveStreamsCheck < this.LIVESTREAMS_CACHE_DURATION) {
-      console.log('YouTube: ライブ配信キャッシュを使用');
-      return this.cachedLiveStreams;
-    }
     
     // 認証情報を確認
     if (!this.accessToken) {
@@ -1438,19 +1365,8 @@ async getLiveStreams() {
   } catch (error) {
     console.error('YouTube ライブ配信取得エラー:', error);
     
-    // API制限エラーの場合
-    if (error.isQuotaError) {
-      await Utils.setStorageData({
-        youtubeApiLimitError: {
-          timestamp: Date.now(),
-          message: 'YouTubeのAPI制限に達しました。直接YouTubeで配信を確認してください。',
-          url: 'https://www.youtube.com/live'
-        }
-      });
-      console.log('YouTubeのAPI制限エラーを保存しました');
-    }
     // 認証エラーの場合
-    else if (error.isAuthError) {
+    if (error.isAuthError) {
       await Utils.setStorageData({
         youtubeAuthError: {
           timestamp: Date.now(),

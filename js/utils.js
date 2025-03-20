@@ -251,26 +251,6 @@ const Utils = {
     if (!results[2]) return '';
     
     return decodeURIComponent(results[2].replace(/\+/g, ' '));
-  },
-
-  /**
-   * YouTubeのAPI制限エラーをチェックする
-   * @param {Object} error - エラーオブジェクト
-   * @param {number} errorLifetime - エラーの有効期間（ミリ秒）
-   * @returns {Promise<boolean>} 有効なエラーかどうか
-   */
-  checkYoutubeApiLimitError: async function(error, errorLifetime = 24 * 60 * 60 * 1000) {
-    if (!error) return false;
-    
-    const now = Date.now();
-    
-    // エラーが発生してから指定時間以上経過していたらエラーをクリア
-    if (now - error.timestamp > errorLifetime) {
-      await this.setStorageData({ youtubeApiLimitError: null });
-      return false;
-    }
-    
-    return true;
   }
 };
 

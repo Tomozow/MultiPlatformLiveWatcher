@@ -341,35 +341,3 @@ footer {
   color: #777;
   text-align: center;
 }
-
-/* YouTubeエラーリンクスタイル */
-.youtube-error-link {
-  color: #ff0000;
-  text-decoration: underline;
-  font-weight: bold;
-  cursor: pointer;
-  margin-top: 10px;
-  display: inline-block;
-  padding: 5px 10px;
-  border: 1px solid #ff0000;
-  border-radius: 4px;
-  background-color: rgba(255, 0, 0, 0.1);
-}
-
-.youtube-error-link:hover {
-  background-color: rgba(255, 0, 0, 0.2);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-#error-message {
-  text-align: center;
-  padding: 15px;
-  color: #e74c3c;
-  background-color: rgba(231, 76, 60, 0.1);
-  border-radius: 4px;
-  margin-bottom: 15px;
-}
-
-#error-message p {
-  margin: 5px 0;
-}

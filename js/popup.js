@@ -104,25 +104,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Utils.setStorageData({'popupOpenCount': openCount});
     console.log(`ポップアップを開いた回数: ${openCount}`);
     
-    // YouTubeのAPI制限エラーを確認
-    const youtubeApiLimitError = await Utils.getStorageData('youtubeApiLimitError', null);
-    
-    if (youtubeApiLimitError) {
-      // API制限エラーが24時間以内に発生した場合のみ有効とする
-      const isValidError = await Utils.checkYoutubeApiLimitError(youtubeApiLimitError);
-      
-      if (isValidError) {
-        console.log('有効なYouTubeのAPI制限エラーを検出しました:', youtubeApiLimitError);
-        // エラー情報を保存（displayStreams関数で使用）
-        window.youtubeApiLimitError = youtubeApiLimitError;
-      } else {
-        console.log('YouTubeのAPI制限エラーは期限切れ、またはクリア済みです');
-        window.youtubeApiLimitError = null;
-      }
-    } else {
-      window.youtubeApiLimitError = null;
-    }
-    
     // 保存されたフィルターを読み込む
     savedFilters = await Utils.getStorageData('savedFilters', []);
     updateSavedFiltersList();
@@ -552,40 +533,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // グリッドを一度クリア（確実にタブ切り替え時にもクリアされるようにする）
     streamsGrid.innerHTML = '';
     
-    // YouTube API制限エラーチェック
-    if (window.youtubeApiLimitError && currentPlatformTab === 'youtube') {
-      errorMessage.classList.remove('hidden');
-      errorMessage.innerHTML = `
-        <p>${window.youtubeApiLimitError.message}</p>
-        <p><a href="${window.youtubeApiLimitError.url}" target="_blank" class="youtube-error-link">YouTubeライブページを開く</a></p>
-      `;
-      
-      // エラーメッセージにスタイルを適用
-      const errorLink = errorMessage.querySelector('.youtube-error-link');
-      if (errorLink) {
-        errorLink.style.color = '#ff0000';
-        errorLink.style.textDecoration = 'underline';
-        errorLink.style.fontWeight = 'bold';
-        errorLink.style.cursor = 'pointer';
-        errorLink.style.marginTop = '10px';
-        errorLink.style.display = 'inline-block';
-        errorLink.style.padding = '5px 10px';
-        errorLink.style.border = '1px solid #ff0000';
-        errorLink.style.borderRadius = '4px';
-        errorLink.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
-      }
-      
-      // データが古い可能性がある旨を表示
-      if (statusMessage) {
-        const originalText = statusMessage.textContent;
-        statusMessage.textContent = `${originalText} (データが古い可能性があります)`;
-      }
-    } else {
-      // エラーメッセージをクリア
-      errorMessage.classList.add('hidden');
-      errorMessage.innerHTML = '';
-    }
-    
     // 現在のプラットフォームタブに応じてデータを集計
     let displayableStreams = [];
     
@@ -774,6 +721,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       iconContainer.appendChild(favIcon);
     }
+    
     return iconContainer;
   }
   
@@ -907,24 +855,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updatingPlatforms.youtube = false;
     updatingPlatforms.twitcasting = false;
     
-    // YouTubeのAPI制限エラーがある場合、YouTubeを更新順序から除外
-    let finalUpdateOrder = updateOrder;
-    if (window.youtubeApiLimitError) {
-      console.log('YouTubeのAPI制限エラーが発生しているため、更新順序から除外します');
-      finalUpdateOrder = updateOrder.filter(platform => platform !== 'youtube');
-      
-      // YouTubeタブ表示時にエラーメッセージを表示
-      if (currentPlatformTab === 'youtube' && errorMessage) {
-        errorMessage.classList.remove('hidden');
-        errorMessage.innerHTML = `
-          <p>${window.youtubeApiLimitError.message}</p>
-          <p><a href="${window.youtubeApiLimitError.url}" target="_blank" class="youtube-error-link">YouTubeライブページを開く</a></p>
-        `;
-      }
-    }
-    
     // 更新待ちプラットフォームのキュー
-    updateQueue = [...finalUpdateOrder];
+    updateQueue = [...updateOrder];
     
     // 最初のプラットフォームの更新を開始
     if (updateQueue.length > 0) {
@@ -940,52 +872,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // 更新リクエスト送信
       sendUpdateRequest(firstPlatform);
-    } else {
-      // 更新するプラットフォームがない場合
-      console.log('更新するプラットフォームがありません');
-      if (loader) {
-        loader.classList.add('hidden');
-      }
-    }
-  }
-  
-  /**
-   * 次のプラットフォームの更新をチェック
-   */
-  function checkNextPlatformUpdate() {
-    // キューに残りがあれば次を更新
-    if (updateQueue && updateQueue.length > 0) {
-      const nextPlatform = updateQueue.shift();
-      console.log(`次のプラットフォームを更新: ${nextPlatform}`);
-      
-      // YouTubeのAPI制限エラーがある場合はYouTubeの更新をスキップ
-      if (nextPlatform === 'youtube' && window.youtubeApiLimitError) {
-        console.log('YouTubeのAPI制限エラーが発生しているため、次のプラットフォームの更新に進みます');
-        checkNextPlatformUpdate(); // 再帰的に次のプラットフォームの更新をチェック
-        return;
-      }
-      
-      updatingPlatforms[nextPlatform] = true;
-      
-      // ローダーのメッセージを更新
-      if (loader) {
-        loader.textContent = getUpdatingMessage();
-      }
-      
-      // 更新リクエスト送信
-      sendUpdateRequest(nextPlatform);
-    } else {
-      console.log('すべてのプラットフォームの更新が完了しました');
-      
-      // すべての更新状態をリセット（念のため）
-      updatingPlatforms.twitch = false;
-      updatingPlatforms.youtube = false;
-      updatingPlatforms.twitcasting = false;
-      
-      // ローダーを非表示
-      if (loader && !isAnyPlatformUpdating()) {
-        loader.classList.add('hidden');
-      }
     }
   }
   
@@ -996,40 +882,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   function sendUpdateRequest(platform) {
     console.log(`${platform}の更新リクエストを送信`);
     
-    // YouTubeのAPI制限エラーがある場合はYouTubeの更新をスキップ
-    if (platform === 'youtube' && window.youtubeApiLimitError) {
-      console.log('YouTubeのAPI制限エラーが発生しているため、更新をスキップします');
-      // 更新完了として扱い、次のプラットフォームの更新に進む
-      updatingPlatforms[platform] = false;
-      checkNextPlatformUpdate();
-      
-      // 更新状態の表示を更新
-      if (loader) {
-        if (isAnyPlatformUpdating() || updateQueue.length > 0) {
-          loader.textContent = getUpdatingMessage();
-        } else {
-          loader.classList.add('hidden');
-        }
-      }
-      
-      // YouTubeタブ表示時にエラーメッセージを表示
-      if (currentPlatformTab === 'youtube' && errorMessage) {
-        errorMessage.classList.remove('hidden');
-        errorMessage.innerHTML = `
-          <p>${window.youtubeApiLimitError.message}</p>
-          <p><a href="${window.youtubeApiLimitError.url}" target="_blank" class="youtube-error-link">YouTubeライブページを開く</a></p>
-        `;
-      }
-      return;
-    }
-    
     // 特定のプラットフォームのみ更新するためのメッセージを送信
     chrome.runtime.sendMessage({ 
       action: 'checkStreams',
       platform: platform
     }, response => {
-      // 何らかのレスポンスがあった場合は、更新状態を終了する
-      // (成功でもエラーでも、更新中状態は解除する)
+      // 更新完了の処理
       updatingPlatforms[platform] = false;
       
       if (response && response.success) {
@@ -1076,6 +934,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   /**
+   * 次のプラットフォームの更新をチェック
+   */
+  function checkNextPlatformUpdate() {
+    // キューに残りがあれば次を更新
+    if (updateQueue && updateQueue.length > 0) {
+      const nextPlatform = updateQueue.shift();
+      console.log(`次のプラットフォームを更新: ${nextPlatform}`);
+      updatingPlatforms[nextPlatform] = true;
+      
+      // ローダーのメッセージを更新
+      if (loader) {
+        loader.textContent = getUpdatingMessage();
+      }
+      
+      // 更新リクエスト送信
+      sendUpdateRequest(nextPlatform);
+    } else {
+      console.log('すべてのプラットフォームの更新が完了しました');
+    }
+  }
+  
+  /**
    * バックグラウンドに更新リクエストを送信
    * @param {string} platform - 更新するプラットフォーム ('all', 'twitch', 'youtube', 'twitcasting')
    */
@@ -1085,20 +965,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 全プラットフォーム更新の場合は設定された順序で更新
     if (platform === 'all') {
       updatePlatformsInOrder();
-      return;
-    }
-    
-    // YouTubeのAPI制限エラーがある場合はYouTubeの更新リクエストをブロック
-    if (platform === 'youtube' && window.youtubeApiLimitError) {
-      console.log('YouTubeのAPI制限エラーが発生しているため、更新リクエストをスキップします');
-      // エラーメッセージを表示
-      if (errorMessage) {
-        errorMessage.classList.remove('hidden');
-        errorMessage.innerHTML = `
-          <p>${window.youtubeApiLimitError.message}</p>
-          <p><a href="${window.youtubeApiLimitError.url}" target="_blank" class="youtube-error-link">YouTubeライブページを開く</a></p>
-        `;
-      }
       return;
     }
     
@@ -1127,32 +993,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 特定のプラットフォームの更新を終了
     updatingPlatforms[platform] = false;
     
-    // YouTubeのAPI制限エラーを検出して記録
-    if (platform === 'youtube' && error && error.includes('クォータ超過')) {
-      window.youtubeApiLimitError = {
-        timestamp: Date.now(),
-        message: 'YouTubeのAPI制限に達しました。直接YouTubeで配信を確認してください。',
-        url: 'https://www.youtube.com/live'
-      };
-      
-      // ストレージに保存
-      Utils.setStorageData({ youtubeApiLimitError: window.youtubeApiLimitError });
-      console.log('YouTubeのAPI制限エラーを保存しました:', window.youtubeApiLimitError);
-    }
-    
     // エラーメッセージを表示
     if (errorMessage) {
       errorMessage.classList.remove('hidden');
-      
-      // YouTubeのAPI制限エラーの場合は特別なメッセージとリンクを表示
-      if (platform === 'youtube' && window.youtubeApiLimitError) {
-        errorMessage.innerHTML = `
-          <p>${window.youtubeApiLimitError.message}</p>
-          <p><a href="${window.youtubeApiLimitError.url}" target="_blank" class="youtube-error-link">YouTubeライブページを開く</a></p>
-        `;
-      } else {
-        errorMessage.textContent = `${getPlatformName(platform)}の更新中にエラーが発生しました: ${error || '不明なエラー'}`;
-      }
+      errorMessage.textContent = `${getPlatformName(platform)}の更新中にエラーが発生しました: ${error || '不明なエラー'}`;
     }
     
     // キャッシュデータは維持したまま表示を更新
