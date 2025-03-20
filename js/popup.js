@@ -656,8 +656,42 @@ function resetFilter() {
   }
   
 /**
- * 配信データの表示
+ * API制限エラーを表示
+ * @param {string} platform - プラットフォーム名
  */
+function showAPILimitError(platform) {
+  console.log(`${platform}のAPI制限エラーを表示します`);
+  
+  // エラーメッセージ要素を確認
+  if (!errorMessage) {
+    console.error('エラーメッセージ要素が見つかりません');
+    return;
+  }
+  
+  // 現在のタブをチェック - YouTubeタブまたは全てタブの場合のみ表示
+  if (platform === 'youtube' && (currentPlatformTab === 'youtube' || currentPlatformTab === 'all')) {
+    // よりコンパクトなエラーメッセージを設定
+    errorMessage.innerHTML = `
+      <div class="api-error-container">
+        <p>YouTube APIの利用制限中</p>
+        <a href="https://www.youtube.com/live" target="_blank" class="youtube-link-button">YouTube Live</a>
+      </div>
+    `;
+    
+    // エラーメッセージを表示
+    errorMessage.classList.remove('hidden');
+    
+    // "現在配信中のチャンネルはありません" メッセージを隠す
+    if (noStreams) {
+      noStreams.classList.add('hidden');
+    }
+  } else if (platform !== 'youtube') {
+    // その他のプラットフォーム用のシンプルなメッセージ
+    errorMessage.textContent = `${getPlatformName(platform)}の更新に失敗しました`;
+    errorMessage.classList.remove('hidden');
+  }
+}
+
 /**
  * 配信データの表示
  */
@@ -670,13 +704,16 @@ function displayStreams() {
   const hasYouTubeError = platformErrors.youtube && 
                           (currentPlatformTab === 'youtube' || currentPlatformTab === 'all');
   
-  // YouTubeのAPI制限エラーがある場合は、最優先でエラーメッセージを表示
+  // YouTubeのAPI制限エラーがある場合は、関連するタブのみでエラーメッセージを表示
   if (hasYouTubeError) {
     // エラーメッセージを表示
     showAPILimitError('youtube');
     
     // 「配信なし」メッセージを非表示
     if (noStreams) noStreams.classList.add('hidden');
+  } else if (currentPlatformTab !== 'youtube' && currentPlatformTab !== 'all') {
+    // YouTube以外のタブではエラーメッセージを隠す
+    if (errorMessage) errorMessage.classList.add('hidden');
   }
   
   // グリッドを一度クリア
@@ -707,217 +744,6 @@ function displayStreams() {
   
   // 更新中かどうかを確認
   const isUpdating = isAnyPlatformUpdating();
-  
-  // お気に入り情報を設定
-  displayableStreams = displayableStreams.map(stream => ({
-    ...stream,
-    isFavorite: favorites.includes(stream.channelId)
-  }));
-  
-  // フィルターの適用
-  const filteredStreams = Utils.filterStreams(displayableStreams, currentFilter);
-  
-  // 視聴者数でソート
-  const sortedStreams = Utils.sortStreams(filteredStreams, 'viewerCount', false);
-  
-  console.log(`表示する配信数(フィルタ後): ${sortedStreams.length}`);
-  
-  // フィルター適用後の結果がない場合
-  if (sortedStreams.length === 0) {
-    // YouTube APIエラーがある場合はエラーメッセージを優先
-    if (hasYouTubeError) {
-      // 「配信なし」メッセージは表示しない
-      if (noStreams) noStreams.classList.add('hidden');
-    } else if (!isUpdating) {
-      // 更新中でなければ「配信なし」を表示
-      if (noStreams) {
-        noStreams.classList.remove('hidden');
-        
-        // フィルターが適用されているかをチェック
-        const isFiltered = 
-          currentFilter.category !== '' || 
-          currentFilter.channelName !== '' || 
-          currentFilter.minViewers > 0 || 
-          currentFilter.favoritesOnly || 
-          (currentFilter.platforms && currentFilter.platforms.length < 3);
-        
-        if (isFiltered) {
-          noStreams.textContent = 'フィルター条件に一致する配信はありません';
-        } else {
-          noStreams.textContent = '現在配信中のチャンネルはありません';
-        }
-      }
-    } else {
-      // 更新中は「配信なし」メッセージを非表示
-      if (noStreams) noStreams.classList.add('hidden');
-    }
-    
-    return;
-  } else {
-    // 配信データがある場合は「配信なし」を非表示
-    if (noStreams) noStreams.classList.add('hidden');
-  }
-  
-  // CSS Grid列数を設定
-  const columns = sortedStreams.length <= 10 ? 5 : 6;
-  streamsGrid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
-  
-  // 配信アイコンを作成
-  sortedStreams.forEach(stream => {
-    const icon = createStreamIcon(stream);
-    streamsGrid.appendChild(icon);
-  });
-}
-  
-/**
- * API制限エラーを表示
- * @param {string} platform - プラットフォーム名
- */
-function showAPILimitError(platform) {
-  console.log(`${platform}のAPI制限エラーを表示します`);
-  
-  // エラーメッセージ要素を確認
-  if (!errorMessage) {
-    console.error('エラーメッセージ要素が見つかりません');
-    return;
-  }
-  
-  // エラーメッセージを表示
-  if (platform === 'youtube') {
-    // エラーメッセージを直接HTMLで設定
-    errorMessage.innerHTML = `
-      <div class="api-error-container">
-        <p><strong>YouTube APIのクォータ(利用上限)に達しました</strong></p>
-        <p>YouTube APIは24時間ごとに使用制限がリセットされます。既存のデータを表示しています。</p>
-        <a href="https://www.youtube.com/live" target="_blank" class="youtube-link-button">YouTube Live公式ページを開く</a>
-      </div>
-    `;
-    
-    // エラーメッセージが隠れないように確実に表示
-    errorMessage.classList.remove('hidden');
-    
-    // "現在配信中のチャンネルはありません" メッセージを隠す
-    if (noStreams) {
-      noStreams.classList.add('hidden');
-    }
-    
-    console.log('YouTube APIエラーメッセージをHTMLで設定しました');
-    
-    // スタイル適用確認
-    setTimeout(() => {
-      const container = errorMessage.querySelector('.api-error-container');
-      if (container) {
-        console.log('エラーコンテナのスタイル:', 
-          window.getComputedStyle(container).backgroundColor,
-          window.getComputedStyle(container).borderLeftColor);
-      }
-    }, 100);
-  } else {
-    // その他のプラットフォーム用のシンプルなメッセージ
-    errorMessage.textContent = `${getPlatformName(platform)}のAPIに接続できません。現在のデータを表示しています。`;
-    errorMessage.classList.remove('hidden');
-  }
-}
-
-/**
- * 更新エラーの処理
- * @param {string} platform - エラーが発生したプラットフォーム
- * @param {string} error - エラーメッセージ
- */
-function handleUpdateError(platform, error) {
-  console.error(`${platform}の更新エラー:`, error);
-  
-  // 特定のプラットフォームの更新を終了
-  updatingPlatforms[platform] = false;
-  
-  // エラーメッセージの前処理（文字列であることを確認）
-  const errorMsg = typeof error === 'string' ? error : String(error);
-  
-  // クォータ超過エラーかどうかを判定
-  const isQuotaError = errorMsg && (
-    errorMsg.includes('quota') || 
-    errorMsg.includes('クォータ') || 
-    errorMsg.includes('制限') || 
-    errorMsg.includes('exceeded')
-  );
-  
-  // エラータイプに基づいて処理
-  if (isQuotaError && platform === 'youtube') {
-    // YouTube APIクォータ超過エラー
-    platformErrors[platform] = true;
-    
-    // 専用のエラー表示を呼び出し
-    showAPILimitError('youtube');
-  } else if (isQuotaError) {
-    // 他のプラットフォームのクォータエラー
-    platformErrors[platform] = true;
-    
-    if (errorMessage) {
-      errorMessage.classList.remove('hidden');
-      errorMessage.textContent = `${getPlatformName(platform)}のAPI制限に達しました。現在のデータを表示しています。`;
-    }
-  } else {
-    // その他のエラー
-    if (errorMessage) {
-      errorMessage.classList.remove('hidden');
-      errorMessage.textContent = `${getPlatformName(platform)}の更新中にエラーが発生しました: ${errorMsg || '不明なエラー'}`;
-    }
-  }
-  
-  // プラットフォームエラー状態を保存
-  chrome.storage.local.set({ 'platformErrors': platformErrors }, () => {
-    console.log('プラットフォームエラーステータスを保存しました:', platformErrors);
-  });
-  
-  // キャッシュデータは維持したまま表示を更新
-  displayStreams();
-}
-
-/**
- * 配信データの表示
- */
-function displayStreams() {
-  if (!streamsGrid) return;
-  
-  console.log(`displayStreams: 現在のタブ = ${currentPlatformTab}`);
-  
-  // グリッドを一度クリア（確実にタブ切り替え時にもクリアされるようにする）
-  streamsGrid.innerHTML = '';
-  
-  // 現在のプラットフォームタブに応じてデータを集計
-  let displayableStreams = [];
-  
-  if (currentPlatformTab === 'all') {
-    // 全プラットフォームのストリームを結合
-    displayableStreams = [
-      ...platformStreams.twitch,
-      ...platformStreams.youtube,
-      ...platformStreams.twitcasting
-    ];
-    console.log(`「すべて」タブ: ${displayableStreams.length}件の配信を表示`);
-  } else {
-    // 特定のプラットフォームのみ表示
-    displayableStreams = platformStreams[currentPlatformTab] || [];
-    
-    // プラットフォームのフィルタリングを確実に適用
-    displayableStreams = displayableStreams.filter(stream => 
-      stream.platform === currentPlatformTab
-    );
-    
-    console.log(`「${currentPlatformTab}」タブに表示する配信数(フィルタ前): ${displayableStreams.length}`);
-  }
-  
-  // 更新中かどうかを確認
-  const isUpdating = isAnyPlatformUpdating();
-  
-  // YouTube API制限エラーがあるかチェック
-  const hasYouTubeError = platformErrors.youtube && 
-                          (currentPlatformTab === 'youtube' || currentPlatformTab === 'all');
-  
-  // YouTubeのAPI制限エラーがある場合は必ず表示
-  if (hasYouTubeError) {
-    showAPILimitError('youtube');
-  }
   
   // データがない場合かつ更新中でない場合
   if (displayableStreams.length === 0) {
@@ -1281,8 +1107,10 @@ function displayStreams() {
       updatingPlatforms[platform] = false;
       
       if (response && response.success) {
-        // APIエラーフラグをリセット
-        platformErrors[platform] = false;
+        // APIエラーフラグをリセット（YouTubeのクォータエラーは特別扱い）
+        if (!(platform === 'youtube' && platformErrors.youtube)) {
+          platformErrors[platform] = false;
+        }
         
         // プラットフォーム別のデータを更新（確実に正しいプラットフォームのデータのみを保存）
         if (platform === 'twitch') {
@@ -1306,9 +1134,11 @@ function displayStreams() {
         console.log(`${platform}の更新完了: 全${allStreams.length}件の配信`);
         if (statusMessage) statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(), 'time')}`;
         
-        // エラーメッセージを非表示（成功時）
-        if (errorMessage) {
-          errorMessage.classList.add('hidden');
+        // エラーメッセージの表示状態はYouTubeのクォータ制限エラーに応じて調整
+        if (platform === 'youtube' && !platformErrors.youtube) {
+          if (errorMessage && (currentPlatformTab === 'youtube' || currentPlatformTab === 'all')) {
+            errorMessage.classList.add('hidden');
+          }
         }
         
         // 表示を更新（現在のタブに関係なく更新）
@@ -1363,7 +1193,11 @@ function displayStreams() {
    * @param {string} platform - 更新するプラットフォーム ('all', 'twitch', 'youtube', 'twitcasting')
    */
   function requestUpdate(platform = 'all') {
-    if (errorMessage) errorMessage.classList.add('hidden');
+    // エラーメッセージは必ずしもクリアしない
+    // YouTubeのクォータエラーがある場合は表示を維持する
+    if (!platformErrors.youtube || (platform !== 'all' && platform !== 'youtube')) {
+      if (errorMessage) errorMessage.classList.add('hidden');
+    }
     
     // 全プラットフォーム更新の場合は設定された順序で更新
     if (platform === 'all') {
@@ -1410,7 +1244,10 @@ function handleUpdateError(platform, error) {
     platformErrors[platform] = true;
     
     // 専用のエラー表示を呼び出し
-    showAPILimitError('youtube');
+    // 現在のタブが「すべて」または「YouTube」の場合のみ表示
+    if (currentPlatformTab === 'youtube' || currentPlatformTab === 'all') {
+      showAPILimitError('youtube');
+    }
   } else if (isQuotaError) {
     // 他のプラットフォームのクォータエラー
     platformErrors[platform] = true;
