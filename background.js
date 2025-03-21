@@ -1,12 +1,20 @@
-// キャンセル可能なリクエストを管理するオブジェクト
+// キャンセル可能なリクエストを管理するオブジェクトを統一
 let activeRequests = {
-  twitch: null,
+  twitch: {
+    controller: null,
+    lastRequestTime: 0,
+    isProcessing: false
+  },
   youtube: {
     controller: null,
     lastRequestTime: 0,
     isProcessing: false
   },
-  twitcasting: null
+  twitcasting: {
+    controller: null,
+    lastRequestTime: 0,
+    isProcessing: false
+  }
 };
 
 // リクエスト間隔の最小値（ミリ秒）
@@ -156,6 +164,24 @@ function cleanupResources() {
 // 10分ごとにクリーンアップを実行
 setInterval(cleanupResources, 600000);
 
+// Twitchデータを取得する関数を追加
+async function fetchTwitchData(signal) {
+  try {
+    if (settings.debugModeEnabled) {
+      console.log('Twitch API リクエスト: /streams');
+    }
+    
+    // Twitchの実際のAPI呼び出し処理をここに実装
+    // ...
+    const streams = []; // APIからの結果
+    
+    return streams;
+  } catch (error) {
+    console.error('Twitch データ取得中にエラーが発生しました:', error);
+    throw error;
+  }
+}
+
 // メッセージリスナーに追加
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 設定更新通知
@@ -176,7 +202,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // 更新キャンセルリクエスト
+  // 更新キャンセルリクエストも修正
   if (request.action === 'cancelUpdates') {
     const platforms = request.platforms || [];
     
@@ -185,25 +211,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     
     platforms.forEach(platform => {
-      if (platform === 'youtube') {
-        if (activeRequests[platform].controller) {
-          if (settings.debugModeEnabled) {
-            console.log(`${platform}のリクエストをキャンセル`);
-          }
-          if (activeRequests[platform].controller.abort) {
-            activeRequests[platform].controller.abort();
-          }
-          activeRequests[platform].controller = null;
-          activeRequests[platform].isProcessing = false;
-        }
-      } else if (activeRequests[platform]) {
+      if (activeRequests[platform] && activeRequests[platform].controller) {
         if (settings.debugModeEnabled) {
           console.log(`${platform}のリクエストをキャンセル`);
         }
-        if (activeRequests[platform].abort) {
-          activeRequests[platform].abort();
+        if (activeRequests[platform].controller.abort) {
+          activeRequests[platform].controller.abort();
         }
-        activeRequests[platform] = null;
+        activeRequests[platform].controller = null;
+        activeRequests[platform].isProcessing = false;
       }
     });
     
@@ -221,8 +237,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('呼び出し元のスタック:', new Error().stack);
     }
     
-    // YouTubeの場合の特別処理
-    if (platform === 'youtube') {
+    // すべてのプラットフォームで同じ処理構造を使用
+    if (['youtube', 'twitch', 'twitcasting'].includes(platform)) {
       // すでに処理中の場合は新しいリクエストを拒否
       if (activeRequests[platform].isProcessing) {
         if (settings.debugModeEnabled) {
@@ -272,11 +288,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       activeRequests[platform].isProcessing = true;
       activeRequests[platform].lastRequestTime = now;
       
+      // プラットフォーム別の処理を呼び出し
+      let dataPromise;
+      
+      if (platform === 'youtube') {
+        dataPromise = fetchYouTubeData(controller.signal);
+      } else if (platform === 'twitch') {
+        dataPromise = fetchTwitchData(controller.signal);
+      } else if (platform === 'twitcasting') {
+        // TwitCastingの処理は必要に応じて実装
+        dataPromise = Promise.resolve([]);
+      }
+      
       // 非同期処理の開始
-      fetchYouTubeData(controller.signal)
+      dataPromise
         .then(streams => {
           if (settings.debugModeEnabled) {
-            console.log(`${platform}のデータ取得が完了しました`);
+            console.log(`${platform}のデータ取得が完了しました: ${streams.length}件`);
           }
           activeRequests[platform].controller = null;
           activeRequests[platform].isProcessing = false;
@@ -292,27 +320,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       
       return true; // 非同期レスポンスを使用することを示す
-    } 
-    else if (platform === 'twitch' || platform === 'twitcasting') {
-      // Twitch、TwitCasting用の処理
-      // ...
-      
-      // テストモードの場合
-      if (settings.testModeEnabled) {
-        setTimeout(() => {
-          sendResponse({ success: true, streams: testData[platform] || [] });
-        }, 1000);
-        return true;
-      }
-      
-      // 実際の処理
-      // ...
-      
-      // 処理完了後
-      activeRequests[platform] = null;
-      sendResponse({ success: true, streams: [] });
-      
-      return true;
     }
     
     // プラットフォームが不明な場合

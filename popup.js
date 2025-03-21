@@ -208,7 +208,15 @@ function logMessage(message, data) {
 
 // DOMContentLoaded イベントリスナーを修正
 document.addEventListener('DOMContentLoaded', async () => {
-  // UIの初期化など他の処理...
+  // デバッグモードを一時的に有効化
+  chrome.storage.local.set({
+    settings: {
+      debugModeEnabled: true,
+      testModeEnabled: false
+    }
+  }, () => {
+    console.log('デバッグモードを有効化しました');
+  });
   
   // 前回のチェックから一定時間経過しているか確認してからYouTubeの更新を要求
   chrome.storage.local.get(['lastYouTubeUpdate'], async (data) => {
