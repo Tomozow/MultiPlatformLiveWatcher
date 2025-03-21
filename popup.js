@@ -22,21 +22,16 @@ tabButtons.forEach(button => {
         });
       });
       
-      // 更新中のプラットフォームをキャンセル
+      // すべてのプラットフォームの更新状態をリセット
       for (const platform in updatingPlatforms) {
-        if (updatingPlatforms[platform]) {
-          console.log(`${platform}の更新を中断`);
-          updatingPlatforms[platform] = false;
-        }
+        updatingPlatforms[platform] = false;
       }
       
       // 更新キューをクリア
       updateQueue = [];
       
       // ローダーを非表示
-      if (loader) {
-        loader.classList.add('hidden');
-      }
+      updateLoaderVisibility();
     }
     
     // すべてのタブから active クラスを削除
@@ -114,8 +109,7 @@ function requestUpdate(platform, isUserInitiated = false) {
 }
 
 /**
- * 更新リクエストを送信する（実際のリクエスト部分を分離）
- * @param {string} platform - 更新するプラットフォーム
+ * 更新リクエストを送信する関数
  */
 function sendUpdateRequest(platform, isUserInitiated = false) {
   console.log(`${platform}の更新リクエストを送信`);
@@ -132,15 +126,32 @@ function sendUpdateRequest(platform, isUserInitiated = false) {
   // ログ記録
   logMessage(`${platform}の更新リクエストを送信`, { time: new Date().toISOString() });
   
+  // メッセージ送信の前にタイムアウト処理を設定（30秒後に自動的にタイムアウト）
+  const timeoutId = setTimeout(() => {
+    console.log(`${platform}の更新がタイムアウトしました`);
+    updatingPlatforms[platform] = false;
+    
+    // 更新状態の表示を更新
+    updateLoaderVisibility();
+    
+    // 次のプラットフォームの更新をチェック
+    checkNextPlatformUpdate();
+  }, 30000);
+  
   // 特定のプラットフォームのみ更新するためのメッセージを送信
   chrome.runtime.sendMessage({ 
     action: 'checkStreams',
     platform: platform,
     isUserInitiated: isUserInitiated
   }, response => {
+    // タイムアウトをクリア
+    clearTimeout(timeoutId);
+    
     // タブが切り替わっていたら結果を無視
     if (requestTab !== currentPlatformTab) {
       console.log(`タブが切り替わったため ${platform} の更新結果を無視`);
+      updatingPlatforms[platform] = false;
+      updateLoaderVisibility();
       return;
     }
     
@@ -168,23 +179,17 @@ function sendUpdateRequest(platform, isUserInitiated = false) {
         checkNextPlatformUpdate();
         
         // 更新状態の表示を更新
-        if (loader) {
-          if (isAnyPlatformUpdating() || updateQueue.length > 0) {
-            loader.textContent = getUpdatingMessage();
-          } else {
-            loader.classList.add('hidden');
-          }
-        }
+        updateLoaderVisibility();
         
         return;
       }
       
-      // APIエラーフラグをリセット（YouTubeのクォータエラーは特別扱い）
+      // APIエラーフラグをリセット
       if (!(platform === 'youtube' && platformErrors.youtube)) {
         platformErrors[platform] = false;
       }
       
-      // プラットフォーム別のデータを更新（確実に正しいプラットフォームのデータのみを保存）
+      // プラットフォーム別のデータを更新
       if (platform === 'twitch') {
         platformStreams.twitch = response.streams.map(stream => ({
           ...stream,
@@ -215,14 +220,14 @@ function sendUpdateRequest(platform, isUserInitiated = false) {
       console.log(`${platform}の更新完了: 全${allStreams.length}件の配信`);
       if (statusMessage) statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(), 'time')}`;
       
-      // エラーメッセージの表示状態はYouTubeのクォータ制限エラーに応じて調整
+      // エラーメッセージの表示状態を調整
       if (platform === 'youtube' && !platformErrors.youtube) {
         if (errorMessage && (currentPlatformTab === 'youtube' || currentPlatformTab === 'all')) {
           errorMessage.classList.add('hidden');
         }
       }
       
-      // 表示を更新（現在のタブに関係なく更新）
+      // 表示を更新
       displayStreams();
     } else {
       handleUpdateError(platform, response ? response.error : '更新に失敗しました');
@@ -232,14 +237,58 @@ function sendUpdateRequest(platform, isUserInitiated = false) {
     checkNextPlatformUpdate();
     
     // 更新状態の表示を更新
-    if (loader) {
-      if (isAnyPlatformUpdating() || updateQueue.length > 0) {
-        loader.textContent = getUpdatingMessage();
-      } else {
-        loader.classList.add('hidden');
-      }
-    }
+    updateLoaderVisibility();
   });
+}
+
+/**
+ * ローダーの表示状態を更新する関数（一元管理のため分離）
+ */
+function updateLoaderVisibility() {
+  if (!loader) return;
+  
+  const updating = isAnyPlatformUpdating();
+  const queueHasItems = updateQueue.length > 0;
+  
+  console.log('更新状態:', {
+    updating,
+    queueHasItems,
+    updatingPlatforms,
+    updateQueue
+  });
+  
+  if (updating || queueHasItems) {
+    loader.textContent = getUpdatingMessage();
+    loader.classList.remove('hidden');
+  } else {
+    console.log('すべての更新が完了しました - ローダーを非表示にします');
+    loader.classList.add('hidden');
+  }
+}
+
+/**
+ * 更新キュー処理の改善
+ */
+function checkNextPlatformUpdate() {
+  // 更新中のプラットフォームがあれば処理しない
+  if (isAnyPlatformUpdating()) {
+    console.log('まだ更新中のプラットフォームがあります。キュー処理をスキップします');
+    return;
+  }
+  
+  // キューが空なら処理終了
+  if (updateQueue.length === 0) {
+    console.log('更新キューが空です');
+    updateLoaderVisibility();
+    return;
+  }
+  
+  // キューから次のプラットフォームを取得
+  const nextPlatform = updateQueue.shift();
+  console.log(`キューから次のプラットフォームを取得: ${nextPlatform}`);
+  
+  // 次のプラットフォームを更新
+  requestUpdate(nextPlatform);
 }
 
 // デバッグ関連の関数を追加
@@ -255,14 +304,27 @@ function logMessage(message, data) {
 
 // DOMContentLoaded イベントリスナーを修正
 document.addEventListener('DOMContentLoaded', async () => {
-  // デバッグモードを一時的に有効化
+  console.log('ポップアップが読み込まれました');
+  
+  // デバッグモードとテストモードを有効化
   chrome.storage.local.set({
     settings: {
       debugModeEnabled: true,
-      testModeEnabled: false
+      testModeEnabled: true  // テストモードも有効化
     }
   }, () => {
-    console.log('デバッグモードを有効化しました');
+    console.log('デバッグモードとテストモードを有効化しました');
+    
+    // 設定変更の通知
+    chrome.runtime.sendMessage({
+      action: 'settingsUpdated',
+      settings: {
+        debugModeEnabled: true,
+        testModeEnabled: true
+      }
+    }, response => {
+      console.log('設定更新通知の結果:', response);
+    });
   });
   
   // 各プラットフォームの最新のキャッシュデータを取得して表示
@@ -369,4 +431,79 @@ let platformStreams = {
   twitcasting: []
 };
 
-let allStreams = []; 
+let allStreams = [];
+
+// 変数の初期化がされているか確認
+let updatingPlatforms = {
+  twitch: false,
+  youtube: false,
+  twitcasting: false
+};
+
+let updateQueue = [];
+
+/**
+ * いずれかのプラットフォームが更新中かどうかを確認
+ */
+function isAnyPlatformUpdating() {
+  console.log('更新プラットフォーム状態:', updatingPlatforms);
+  return Object.values(updatingPlatforms).some(isUpdating => isUpdating === true);
+}
+
+/**
+ * 現在の更新状態に基づいたメッセージを生成
+ */
+function getUpdatingMessage() {
+  const updating = Object.keys(updatingPlatforms).filter(p => updatingPlatforms[p]);
+  const waiting = updateQueue;
+  
+  if (updating.length === 0 && waiting.length === 0) {
+    return '更新完了';
+  }
+  
+  let message = '';
+  
+  if (updating.length > 0) {
+    const updatingNames = updating.map(p => {
+      if (p === 'youtube') return 'YouTube';
+      if (p === 'twitch') return 'Twitch';
+      if (p === 'twitcasting') return 'TwitCasting';
+      return p;
+    });
+    message = `${updatingNames.join('、')}を更新中...`;
+  }
+  
+  if (waiting.length > 0) {
+    const waitingNames = waiting.map(p => {
+      if (p === 'youtube') return 'YouTube';
+      if (p === 'twitch') return 'Twitch';
+      if (p === 'twitcasting') return 'TwitCasting';
+      return p;
+    });
+    message += `${message ? '（待機中: ' : '待機中: '}${waitingNames.join('、')}）`;
+  }
+  
+  return message;
+}
+
+/**
+ * 全プラットフォームを順番に更新
+ */
+function updatePlatformsInOrder(isUserInitiated = false) {
+  console.log('全プラットフォームを順番に更新');
+  
+  // キューをクリア
+  updateQueue = [];
+  
+  // 更新順序を設定（例: Twitch, YouTube, TwitCasting）
+  const platforms = ['twitch', 'youtube', 'twitcasting'];
+  
+  // 最初のプラットフォームを即時更新
+  const firstPlatform = platforms.shift();
+  requestUpdate(firstPlatform, isUserInitiated);
+  
+  // 残りのプラットフォームをキューに追加
+  updateQueue = platforms;
+  
+  console.log('更新キュー:', updateQueue);
+} 

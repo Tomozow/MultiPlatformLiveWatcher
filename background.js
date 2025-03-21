@@ -381,19 +381,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // 他のリクエスト処理...
-});
-
-// DOMContentLoaded イベントリスナーを修正
-document.addEventListener('DOMContentLoaded', async () => {
-  // デバッグモードとテストモードを一時的に有効化
-  chrome.storage.local.set({
-    settings: {
-      debugModeEnabled: true,
-      testModeEnabled: true  // テストモードも有効化
-    }
-  }, () => {
-    console.log('デバッグモードとテストモードを有効化しました');
-  });
-  
-  // 以下は同じ...
 }); 
