@@ -111,6 +111,14 @@ header h1 {
   margin-top: 5px;
 }
 
+/* 設定説明文 */
+.setting-description {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #777;
+  font-style: italic;
+}
+
 /* 認証セクション */
 .auth-section {
   display: flex;
