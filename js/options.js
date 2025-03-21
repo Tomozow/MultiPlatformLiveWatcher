@@ -784,450 +784,453 @@ function updateUI() {
       return;
     }
     
-   // 追加
-   authInfo.twitcasting.userIds.push(userId);
+    // IDのバリデーション：コロン(:)を含むIDも許可
+    // コロンを含むユーザーIDも有効にする
     
-   // UI更新
-   updateUserIdsList();
-   
-   // 入力フィールドをクリア
-   newUserId.value = '';
-   
-   showStatusMessage('ユーザーIDが追加されました');
- }
- 
- /**
-  * TwitCastingユーザーIDの削除
-  * @param {string} userId - 削除するユーザーID
-  */
- function removeTwitCastingUserId(userId) {
-   console.log('TwitCastingユーザーIDを削除します:', userId);
-   
-   authInfo.twitcasting.userIds = authInfo.twitcasting.userIds.filter(id => id !== userId);
-   
-   // UI更新
-   updateUserIdsList();
-   
-   showStatusMessage('ユーザーIDが削除されました');
- }
- 
- /**
-  * ユーザーIDリストの更新
-  */
- function updateUserIdsList() {
-   console.log('ユーザーIDリストを更新します');
-   
-   if (!twitcastingUserIds) {
-     console.error('twitcastingUserIds要素が見つかりません');
-     return;
-   }
-   
-   twitcastingUserIds.innerHTML = '';
-   
-   // ユーザーIDがない場合
-   if (authInfo.twitcasting.userIds.length === 0) {
-     const emptyMessage = document.createElement('div');
-     emptyMessage.textContent = 'ユーザーIDが登録されていません';
-     emptyMessage.className = 'empty-message';
-     twitcastingUserIds.appendChild(emptyMessage);
-     return;
-   }
-   
-   // 各ユーザーIDの要素を作成
-   authInfo.twitcasting.userIds.forEach(userId => {
-     const item = document.createElement('div');
-     item.className = 'user-id-item';
-     
-     const idText = document.createElement('span');
-     idText.textContent = userId;
-     item.appendChild(idText);
-     
-     const removeButton = document.createElement('button');
-     removeButton.className = 'remove-button';
-     removeButton.textContent = '×';
-     removeButton.addEventListener('click', () => removeTwitCastingUserId(userId));
-     item.appendChild(removeButton);
-     
-     twitcastingUserIds.appendChild(item);
-   });
- }
- 
- /**
-  * 保存済みフィルターリストの更新
-  */
- function updateSavedFiltersList() {
-   console.log('保存済みフィルターリストを更新します');
-   
-   if (!savedFiltersList) {
-     console.log('savedFiltersList要素が見つからないか、フィルターが保存されていません');
-     return;
-   }
-   
-   savedFiltersList.innerHTML = '';
-   
-   // フィルターがない場合
-   if (savedFilters.length === 0) {
-     const emptyMessage = document.createElement('div');
-     emptyMessage.textContent = '保存済みフィルターはありません';
-     emptyMessage.className = 'empty-message';
-     savedFiltersList.appendChild(emptyMessage);
-     return;
-   }
-   
-   // 各フィルターの要素を作成
-   savedFilters.forEach(filter => {
-     const item = document.createElement('div');
-     item.className = 'filter-item';
-     
-     const nameText = document.createElement('div');
-     nameText.className = 'name';
-     nameText.textContent = filter.name;
-     item.appendChild(nameText);
-     
-     // フィルター詳細
-     const details = document.createElement('div');
-     details.className = 'details';
-     
-     // プラットフォーム
-     const platforms = filter.platforms.join(', ');
-     details.innerHTML = `プラットフォーム: ${platforms}`;
-     
-     // カテゴリやチャンネル名
-     if (filter.category) {
-       details.innerHTML += `<br>カテゴリ: ${filter.category}`;
-     }
-     if (filter.channelName) {
-       details.innerHTML += `<br>チャンネル名: ${filter.channelName}`;
-     }
-     if (filter.minViewers > 0) {
-       details.innerHTML += `<br>最小視聴者数: ${filter.minViewers}人`;
-     }
-     if (filter.favoritesOnly) {
-       details.innerHTML += `<br>お気に入りのみ`;
-     }
-     
-     item.appendChild(details);
-     
-     // 削除ボタン
-     const deleteButton = document.createElement('button');
-     deleteButton.className = 'delete-button';
-     deleteButton.textContent = '×';
-     deleteButton.addEventListener('click', () => removeFilter(filter.name));
-     item.appendChild(deleteButton);
-     
-     savedFiltersList.appendChild(item);
-   });
- }
- 
- /**
-  * フィルターの削除
-  * @param {string} filterName - 削除するフィルター名
-  */
- function removeFilter(filterName) {
-   console.log('フィルターを削除します:', filterName);
-   
-   if (confirm(`フィルター「${filterName}」を削除してもよろしいですか？`)) {
-     savedFilters = savedFilters.filter(filter => filter.name !== filterName);
-     updateSavedFiltersList();
-     showStatusMessage('フィルターが削除されました');
-   }
- }
- 
- /**
-  * お気に入りリストの更新
-  */
- function updateFavoritesList() {
-   console.log('お気に入りリストを更新します');
-   
-   if (!favoritesList) {
-     console.log('favoritesList要素が見つからないか、お気に入りがありません');
-     return;
-   }
-   
-   favoritesList.innerHTML = '';
-   
-   // お気に入りがない場合
-   if (favorites.length === 0) {
-     const emptyMessage = document.createElement('div');
-     emptyMessage.textContent = 'お気に入り配信者はありません';
-     emptyMessage.className = 'empty-message';
-     favoritesList.appendChild(emptyMessage);
-     return;
-   }
-   
-   // ストリームデータを読み込んでチャンネル名を取得
-   chrome.storage.local.get(['streams'], data => {
-     const streams = data.streams || [];
-     const channelInfo = {};
-     
-     // チャンネル情報を収集
-     streams.forEach(stream => {
-       if (!channelInfo[stream.channelId]) {
-         channelInfo[stream.channelId] = {
-           channelName: stream.channelName,
-           platform: stream.platform,
-           thumbnail: stream.thumbnail
-         };
-       }
-     });
-     
-     // お気に入り要素を作成
-     favorites.forEach(channelId => {
-       const info = channelInfo[channelId] || { 
-         channelName: channelId,
-         platform: 'unknown'
-       };
-       
-       const item = document.createElement('div');
-       item.className = 'favorite-item';
-       
-       // プラットフォームアイコン
-       if (info.platform !== 'unknown') {
-         const platformIcon = document.createElement('img');
-         platformIcon.className = 'platform-icon';
-         platformIcon.src = `images/${info.platform}.svg`;
-         platformIcon.alt = info.platform;
-         item.appendChild(platformIcon);
-       }
-       
-       // チャンネル名
-       const nameText = document.createElement('div');
-       nameText.className = 'name';
-       nameText.textContent = info.channelName;
-       item.appendChild(nameText);
-       
-       // 削除ボタン
-       const removeButton = document.createElement('button');
-       removeButton.className = 'remove-button';
-       removeButton.textContent = '×';
-       removeButton.addEventListener('click', () => removeFavorite(channelId));
-       item.appendChild(removeButton);
-       
-       favoritesList.appendChild(item);
-     });
-   });
- }
- 
- /**
-  * お気に入りの削除
-  * @param {string} channelId - 削除するチャンネルID
-  */
- function removeFavorite(channelId) {
-   console.log('お気に入りを削除します:', channelId);
-   
-   favorites = favorites.filter(id => id !== channelId);
-   updateFavoritesList();
-   showStatusMessage('お気に入りから削除されました');
- }
- 
- /**
-  * iCalendarへのエクスポート
-  */
- function exportICalendar() {
-   console.log('iCalendarにエクスポートします');
-   
-   chrome.storage.local.get(['schedules'], data => {
-     const schedules = data.schedules || [];
-     
-     if (schedules.length === 0) {
-       showStatusMessage('エクスポートするスケジュールがありません', true);
-       return;
-     }
-     
-     // iCalendarフォーマットの生成
-     let icalContent = [
-       'BEGIN:VCALENDAR',
-       'VERSION:2.0',
-       'PRODID:-//配信通知拡張機能//JP',
-       'CALSCALE:GREGORIAN',
-       'METHOD:PUBLISH'
-     ];
-     
-     schedules.forEach(schedule => {
-       const startDate = new Date(schedule.startTime);
-       const endDate = schedule.endTime ? new Date(schedule.endTime) : new Date(startDate.getTime() + 3600000); // 1時間後
-       
-       const formatDate = (date) => {
-         return date.toISOString().replace(/[-:]/g, '').replace(/\.\d+/g, '');
-       };
-       
-       icalContent.push('BEGIN:VEVENT');
-       icalContent.push(`UID:${schedule.id}`);
-       icalContent.push(`DTSTAMP:${formatDate(new Date())}`);
-       icalContent.push(`DTSTART:${formatDate(startDate)}`);
-       icalContent.push(`DTEND:${formatDate(endDate)}`);
-       icalContent.push(`SUMMARY:${schedule.title || '配信予定'}`);
-       icalContent.push(`DESCRIPTION:${schedule.channelName} (${schedule.platform})`);
-       icalContent.push(`URL:${schedule.url}`);
-       icalContent.push('END:VEVENT');
-     });
-     
-     icalContent.push('END:VCALENDAR');
-     
-     // ダウンロード
-     const blob = new Blob([icalContent.join('\r\n')], { type: 'text/calendar' });
-     const url = URL.createObjectURL(blob);
-     
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = 'stream_schedules.ics';
-     a.click();
-     
-     setTimeout(() => {
-       URL.revokeObjectURL(url);
-     }, 100);
-     
-     showStatusMessage('iCalendarファイルをエクスポートしました');
-   });
- }
- 
- /**
-  * Googleカレンダーへのエクスポート
-  */
- function exportGoogleCalendar() {
-   console.log('Googleカレンダーにエクスポートします');
-   
-   chrome.storage.local.get(['schedules'], data => {
-     const schedules = data.schedules || [];
-     
-     if (schedules.length === 0) {
-       showStatusMessage('エクスポートするスケジュールがありません', true);
-       return;
-     }
-     
-     // 最初の予定だけをエクスポート（Google CalendarのURLパラメータには制限があるため）
-     const schedule = schedules[0];
-     
-     const startDate = new Date(schedule.startTime);
-     const endDate = schedule.endTime ? new Date(schedule.endTime) : new Date(startDate.getTime() + 3600000); // 1時間後
-     
-     // フォーマット：YYYYMMDDTHHmmssZ
-     const formatDate = (date) => {
-       return date.toISOString().replace(/[-:]/g, '').replace(/\.\d+/g, '');
-     };
-     
-     const params = new URLSearchParams({
-       action: 'TEMPLATE',
-       text: `${schedule.title || '配信予定'} - ${schedule.channelName}`,
-       dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
-       details: `${schedule.channelName} (${schedule.platform}) - ${schedule.url}`,
-       location: schedule.url
-     });
-     
-     const googleCalendarUrl = `https://calendar.google.com/calendar/render?${params.toString()}`;
-     
-     // 新しいタブでGoogleカレンダーを開く
-     chrome.tabs.create({ url: googleCalendarUrl });
-     
-     showStatusMessage('Googleカレンダーにエクスポートしました');
-   });
- }
- 
- /**
-  * クリップボードにコピー
-  * @param {string} text - コピーするテキスト
-  */
- function copyToClipboard(text) {
-   console.log('テキストをクリップボードにコピーします:', text);
-   
-   // 新しいClipboard APIを使用（より安全で推奨される方法）
-   if (navigator.clipboard && navigator.clipboard.writeText) {
-     navigator.clipboard.writeText(text)
-       .then(() => {
-         showStatusMessage('クリップボードにコピーしました');
-       })
-       .catch(err => {
-         console.error('コピーエラー:', err);
-         // フォールバック: 古い方法を試す
-         legacyCopyToClipboard(text);
-       });
-   } else {
-     // Clipboard APIが利用できない場合は古い方法を使用
-     legacyCopyToClipboard(text);
-   }
- }
- 
- /**
-  * 古い方法でクリップボードにコピー
-  * @param {string} text - コピーするテキスト 
-  */
- function legacyCopyToClipboard(text) {
-   try {
-     const textArea = document.createElement('textarea');
-     textArea.value = text;
-     textArea.style.position = 'fixed';  // 画面外に配置
-     textArea.style.top = '-9999px';
-     textArea.style.left = '-9999px';
-     document.body.appendChild(textArea);
-     textArea.focus();
-     textArea.select();
-     
-     const successful = document.execCommand('copy');
-     if (successful) {
-       showStatusMessage('クリップボードにコピーしました');
-     } else {
-       showStatusMessage('コピーに失敗しました', true);
-     }
-     
-     document.body.removeChild(textArea);
-   } catch (err) {
-     console.error('コピーエラー:', err);
-     showStatusMessage('コピーに失敗しました', true);
-   }
- }
- 
- /**
-  * 認証リダイレクトを確認
-  */
- function checkAuthRedirect() {
-   console.log('認証リダイレクトを確認します');
-   
-   const hash = window.location.hash;
-   const path = window.location.pathname;
-   const queryParams = new URLSearchParams(window.location.search);
-   
-   // Twitch認証コールバック
-   if (path.includes('callback.html') && hash) {
-     const params = new URLSearchParams(hash.slice(1));
-     const accessToken = params.get('access_token');
-     
-     if (accessToken) {
-       authInfo.twitch.accessToken = accessToken;
-       authInfo.twitch.expiresAt = Date.now() + 14400000; // 4時間
-       
-       if (twitchAuthStatus) {
-         twitchAuthStatus.textContent = '認証済み';
-         twitchAuthStatus.style.color = '#27ae60';
-       }
-       
-       saveSettings();
-       showStatusMessage('Twitch認証が完了しました');
-     }
-   }
-   
-   // YouTube認証コールバック
-   if (queryParams.has('youtube_auth') && queryParams.has('access_token')) {
-     const accessToken = queryParams.get('access_token');
-     
-     if (accessToken) {
-       authInfo.youtube.accessToken = accessToken;
-       authInfo.youtube.expiresAt = Date.now() + 3600000; // 1時間（デフォルト）
-       
-       if (youtubeAuthStatus) {
-         youtubeAuthStatus.textContent = '認証済み';
-         youtubeAuthStatus.style.color = '#27ae60';
-       }
-       
-       saveSettings();
-       showStatusMessage('YouTube認証が完了しました');
-       
-       // URLパラメータを削除してリロード（履歴に認証情報を残さない）
-       const cleanUrl = window.location.pathname;
-       window.history.replaceState({}, document.title, cleanUrl);
-     }
-   }
- }
- 
+    // 追加
+    authInfo.twitcasting.userIds.push(userId);
+    
+    // UI更新
+    updateUserIdsList();
+    
+    // 入力フィールドをクリア
+    newUserId.value = '';
+    
+    showStatusMessage('ユーザーIDが追加されました');
+  }
+  
+  /**
+   * TwitCastingユーザーIDの削除
+   * @param {string} userId - 削除するユーザーID
+   */
+  function removeTwitCastingUserId(userId) {
+    console.log('TwitCastingユーザーIDを削除します:', userId);
+    
+    authInfo.twitcasting.userIds = authInfo.twitcasting.userIds.filter(id => id !== userId);
+    
+    // UI更新
+    updateUserIdsList();
+    
+    showStatusMessage('ユーザーIDが削除されました');
+  }
+  
+  /**
+   * ユーザーIDリストの更新
+   */
+  function updateUserIdsList() {
+    console.log('ユーザーIDリストを更新します');
+    
+    if (!twitcastingUserIds) {
+      console.error('twitcastingUserIds要素が見つかりません');
+      return;
+    }
+    
+    twitcastingUserIds.innerHTML = '';
+    
+    // ユーザーIDがない場合
+    if (authInfo.twitcasting.userIds.length === 0) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.textContent = 'ユーザーIDが登録されていません';
+      emptyMessage.className = 'empty-message';
+      twitcastingUserIds.appendChild(emptyMessage);
+      return;
+    }
+    
+    // 各ユーザーIDの要素を作成
+    authInfo.twitcasting.userIds.forEach(userId => {
+      const item = document.createElement('div');
+      item.className = 'user-id-item';
+      
+      const idText = document.createElement('span');
+      idText.textContent = userId;
+      item.appendChild(idText);
+      
+      const removeButton = document.createElement('button');
+      removeButton.className = 'remove-button';
+      removeButton.textContent = '×';
+      removeButton.addEventListener('click', () => removeTwitCastingUserId(userId));
+      item.appendChild(removeButton);
+      
+      twitcastingUserIds.appendChild(item);
+    });
+  }
+  
+  /**
+   * 保存済みフィルターリストの更新
+   */
+  function updateSavedFiltersList() {
+    console.log('保存済みフィルターリストを更新します');
+    
+    if (!savedFiltersList) {
+      console.log('savedFiltersList要素が見つからないか、フィルターが保存されていません');
+      return;
+    }
+    
+    savedFiltersList.innerHTML = '';
+    
+    // フィルターがない場合
+    if (savedFilters.length === 0) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.textContent = '保存済みフィルターはありません';
+      emptyMessage.className = 'empty-message';
+      savedFiltersList.appendChild(emptyMessage);
+      return;
+    }
+    
+    // 各フィルターの要素を作成
+    savedFilters.forEach(filter => {
+      const item = document.createElement('div');
+      item.className = 'filter-item';
+      
+      const nameText = document.createElement('div');
+      nameText.className = 'name';
+      nameText.textContent = filter.name;
+      item.appendChild(nameText);
+      
+      // フィルター詳細
+      const details = document.createElement('div');
+      details.className = 'details';
+      
+      // プラットフォーム
+      const platforms = filter.platforms.join(', ');
+      details.innerHTML = `プラットフォーム: ${platforms}`;
+      
+      // カテゴリやチャンネル名
+      if (filter.category) {
+        details.innerHTML += `<br>カテゴリ: ${filter.category}`;
+      }
+      if (filter.channelName) {
+        details.innerHTML += `<br>チャンネル名: ${filter.channelName}`;
+      }
+      if (filter.minViewers > 0) {
+        details.innerHTML += `<br>最小視聴者数: ${filter.minViewers}人`;
+      }
+      if (filter.favoritesOnly) {
+        details.innerHTML += `<br>お気に入りのみ`;
+      }
+      
+      item.appendChild(details);
+      
+      // 削除ボタン
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'delete-button';
+      deleteButton.textContent = '×';
+      deleteButton.addEventListener('click', () => removeFilter(filter.name));
+      item.appendChild(deleteButton);
+      
+      savedFiltersList.appendChild(item);
+    });
+  }
+  
+  /**
+   * フィルターの削除
+   * @param {string} filterName - 削除するフィルター名
+   */
+  function removeFilter(filterName) {
+    console.log('フィルターを削除します:', filterName);
+    
+    if (confirm(`フィルター「${filterName}」を削除してもよろしいですか？`)) {
+      savedFilters = savedFilters.filter(filter => filter.name !== filterName);
+      updateSavedFiltersList();
+      showStatusMessage('フィルターが削除されました');
+    }
+  }
+  
+  /**
+   * お気に入りリストの更新
+   */
+  function updateFavoritesList() {
+    console.log('お気に入りリストを更新します');
+    
+    if (!favoritesList) {
+      console.log('favoritesList要素が見つからないか、お気に入りがありません');
+      return;
+    }
+    
+    favoritesList.innerHTML = '';
+    
+    // お気に入りがない場合
+    if (favorites.length === 0) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.textContent = 'お気に入り配信者はありません';
+      emptyMessage.className = 'empty-message';
+      favoritesList.appendChild(emptyMessage);
+      return;
+    }
+    
+    // ストリームデータを読み込んでチャンネル名を取得
+    chrome.storage.local.get(['streams'], data => {
+      const streams = data.streams || [];
+      const channelInfo = {};
+      
+      // チャンネル情報を収集
+      streams.forEach(stream => {
+        if (!channelInfo[stream.channelId]) {
+          channelInfo[stream.channelId] = {
+            channelName: stream.channelName,
+            platform: stream.platform,
+            thumbnail: stream.thumbnail
+          };
+        }
+      });
+      
+      // お気に入り要素を作成
+      favorites.forEach(channelId => {
+        const info = channelInfo[channelId] || { 
+          channelName: channelId,
+          platform: 'unknown'
+        };
+        
+        const item = document.createElement('div');
+        item.className = 'favorite-item';
+        
+        // プラットフォームアイコン
+        if (info.platform !== 'unknown') {
+          const platformIcon = document.createElement('img');
+          platformIcon.className = 'platform-icon';
+          platformIcon.src = `images/${info.platform}.svg`;
+          platformIcon.alt = info.platform;
+          item.appendChild(platformIcon);
+        }
+        
+        // チャンネル名
+        const nameText = document.createElement('div');
+        nameText.className = 'name';
+        nameText.textContent = info.channelName;
+        item.appendChild(nameText);
+        
+        // 削除ボタン
+        const removeButton = document.createElement('button');
+        removeButton.className = 'remove-button';
+        removeButton.textContent = '×';
+        removeButton.addEventListener('click', () => removeFavorite(channelId));
+        item.appendChild(removeButton);
+        
+        favoritesList.appendChild(item);
+      });
+    });
+  }
+  
+  /**
+   * お気に入りの削除
+   * @param {string} channelId - 削除するチャンネルID
+   */
+  function removeFavorite(channelId) {
+    console.log('お気に入りを削除します:', channelId);
+    
+    favorites = favorites.filter(id => id !== channelId);
+    updateFavoritesList();
+    showStatusMessage('お気に入りから削除されました');
+  }
+  
+  /**
+   * iCalendarへのエクスポート
+   */
+  function exportICalendar() {
+    console.log('iCalendarにエクスポートします');
+    
+    chrome.storage.local.get(['schedules'], data => {
+      const schedules = data.schedules || [];
+      
+      if (schedules.length === 0) {
+        showStatusMessage('エクスポートするスケジュールがありません', true);
+        return;
+      }
+      
+      // iCalendarフォーマットの生成
+      let icalContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//配信通知拡張機能//JP',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH'
+      ];
+      
+      schedules.forEach(schedule => {
+        const startDate = new Date(schedule.startTime);
+        const endDate = schedule.endTime ? new Date(schedule.endTime) : new Date(startDate.getTime() + 3600000); // 1時間後
+        
+        const formatDate = (date) => {
+          return date.toISOString().replace(/[-:]/g, '').replace(/\.\d+/g, '');
+        };
+        
+        icalContent.push('BEGIN:VEVENT');
+        icalContent.push(`UID:${schedule.id}`);
+        icalContent.push(`DTSTAMP:${formatDate(new Date())}`);
+        icalContent.push(`DTSTART:${formatDate(startDate)}`);
+        icalContent.push(`DTEND:${formatDate(endDate)}`);
+        icalContent.push(`SUMMARY:${schedule.title || '配信予定'}`);
+        icalContent.push(`DESCRIPTION:${schedule.channelName} (${schedule.platform})`);
+        icalContent.push(`URL:${schedule.url}`);
+        icalContent.push('END:VEVENT');
+      });
+      
+      icalContent.push('END:VCALENDAR');
+      
+      // ダウンロード
+      const blob = new Blob([icalContent.join('\r\n')], { type: 'text/calendar' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stream_schedules.ics';
+      a.click();
+      
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      showStatusMessage('iCalendarファイルをエクスポートしました');
+    });
+  }
+  
+  /**
+   * Googleカレンダーへのエクスポート
+   */
+  function exportGoogleCalendar() {
+    console.log('Googleカレンダーにエクスポートします');
+    
+    chrome.storage.local.get(['schedules'], data => {
+      const schedules = data.schedules || [];
+      
+      if (schedules.length === 0) {
+        showStatusMessage('エクスポートするスケジュールがありません', true);
+        return;
+      }
+      
+      // 最初の予定だけをエクスポート（Google CalendarのURLパラメータには制限があるため）
+      const schedule = schedules[0];
+      
+      const startDate = new Date(schedule.startTime);
+      const endDate = schedule.endTime ? new Date(schedule.endTime) : new Date(startDate.getTime() + 3600000); // 1時間後
+      
+      // フォーマット：YYYYMMDDTHHmmssZ
+      const formatDate = (date) => {
+        return date.toISOString().replace(/[-:]/g, '').replace(/\.\d+/g, '');
+      };
+      
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: `${schedule.title || '配信予定'} - ${schedule.channelName}`,
+        dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
+        details: `${schedule.channelName} (${schedule.platform}) - ${schedule.url}`,
+        location: schedule.url
+      });
+      
+      const googleCalendarUrl = `https://calendar.google.com/calendar/render?${params.toString()}`;
+      
+      // 新しいタブでGoogleカレンダーを開く
+      chrome.tabs.create({ url: googleCalendarUrl });
+      
+      showStatusMessage('Googleカレンダーにエクスポートしました');
+    });
+  }
+  
+  /**
+   * クリップボードにコピー
+   * @param {string} text - コピーするテキスト
+   */
+  function copyToClipboard(text) {
+    console.log('テキストをクリップボードにコピーします:', text);
+    
+    // 新しいClipboard APIを使用（より安全で推奨される方法）
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          showStatusMessage('クリップボードにコピーしました');
+        })
+        .catch(err => {
+          console.error('コピーエラー:', err);
+          // フォールバック: 古い方法を試す
+          legacyCopyToClipboard(text);
+        });
+    } else {
+      // Clipboard APIが利用できない場合は古い方法を使用
+      legacyCopyToClipboard(text);
+    }
+  }
+  
+  /**
+   * 古い方法でクリップボードにコピー
+   * @param {string} text - コピーするテキスト 
+   */
+  function legacyCopyToClipboard(text) {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';  // 画面外に配置
+      textArea.style.top = '-9999px';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const successful = document.execCommand('copy');
+      if (successful) {
+        showStatusMessage('クリップボードにコピーしました');
+      } else {
+        showStatusMessage('コピーに失敗しました', true);
+      }
+      
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.error('コピーエラー:', err);
+      showStatusMessage('コピーに失敗しました', true);
+    }
+  }
+  
+  /**
+   * 認証リダイレクトを確認
+   */
+  function checkAuthRedirect() {
+    console.log('認証リダイレクトを確認します');
+    
+    const hash = window.location.hash;
+    const path = window.location.pathname;
+    const queryParams = new URLSearchParams(window.location.search);
+    
+    // Twitch認証コールバック
+    if (path.includes('callback.html') && hash) {
+      const params = new URLSearchParams(hash.slice(1));
+      const accessToken = params.get('access_token');
+      
+      if (accessToken) {
+        authInfo.twitch.accessToken = accessToken;
+        authInfo.twitch.expiresAt = Date.now() + 14400000; // 4時間
+        
+        if (twitchAuthStatus) {
+          twitchAuthStatus.textContent = '認証済み';
+          twitchAuthStatus.style.color = '#27ae60';
+        }
+        
+        saveSettings();
+        showStatusMessage('Twitch認証が完了しました');
+      }
+    }
+    
+    // YouTube認証コールバック
+    if (queryParams.has('youtube_auth') && queryParams.has('access_token')) {
+      const accessToken = queryParams.get('access_token');
+      
+      if (accessToken) {
+        authInfo.youtube.accessToken = accessToken;
+        authInfo.youtube.expiresAt = Date.now() + 3600000; // 1時間（デフォルト）
+        
+        if (youtubeAuthStatus) {
+          youtubeAuthStatus.textContent = '認証済み';
+          youtubeAuthStatus.style.color = '#27ae60';
+        }
+        
+        saveSettings();
+        showStatusMessage('YouTube認証が完了しました');
+        
+        // URLパラメータを削除してリロード（履歴に認証情報を残さない）
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    }
+  }
+  
 /**
  * プラットフォーム更新順序のドラッグ&ドロップ機能を設定
  */

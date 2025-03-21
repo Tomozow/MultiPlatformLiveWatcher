@@ -117,12 +117,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const controller = new AbortController();
     activeRequests[platform] = controller;
     
-    // ここでリクエスト処理...
-    // 例: fetchAPIを使う場合は { signal: controller.signal } を追加
-    
-    // 処理完了後
-    activeRequests[platform] = null;
-    sendResponse({ success: true, streams: [] });
+    // ユーザーIDを取得
+    chrome.storage.local.get(['authInfo'], data => {
+      const userIds = data.authInfo?.twitcasting?.userIds || [];
+      
+      if (userIds.length === 0) {
+        sendResponse({ success: true, streams: [] });
+        activeRequests[platform] = null;
+        return;
+      }
+      
+      // ここでユーザーIDにコロンが含まれていても問題なく処理できるようにする
+      // URLエンコードしてAPIリクエストに使用
+      const encodedUserIds = userIds.map(id => encodeURIComponent(id));
+      
+      // ... ツイキャスAPIリクエスト処理 ...
+      
+      // 処理完了
+      activeRequests[platform] = null;
+      sendResponse({ success: true, streams: [] });
+    });
     
     return true;
   }
