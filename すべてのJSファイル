@@ -1,0 +1,18 @@
+// 追加
+function logMessage(message, data) {
+  if (chrome.runtime && chrome.runtime.id) {
+    chrome.storage.local.get(['settings'], result => {
+      if (result.settings && result.settings.debugModeEnabled) {
+        console.log(`[${new Date().toISOString()}][${document.title || 'background'}] ${message}`, data || '');
+      }
+    });
+  }
+}
+
+// メッセージ送信前にログを記録
+function sendMessageWithLog(message) {
+  logMessage(`Sending message: ${message.action}`, message);
+  chrome.runtime.sendMessage(message, response => {
+    logMessage(`Response for ${message.action}:`, response);
+  });
+} 

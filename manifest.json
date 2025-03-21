@@ -24,7 +24,7 @@
     "https://oauth-redirect.googleusercontent.com/*"
   ],
   "background": {
-    "service_worker": "js/background.js"
+    "service_worker": "background.js"
   },
   "options_page": "options.html",
   "content_security_policy": {

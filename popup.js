@@ -70,6 +70,50 @@ tabButtons.forEach(button => {
 });
 
 /**
+ * プラットフォーム更新のリクエストを管理
+ * @param {string} platform - 更新するプラットフォーム
+ */
+function requestUpdate(platform) {
+  console.log(`${platform}の更新をリクエスト`);
+  
+  // 更新中フラグを確認
+  if (updatingPlatforms[platform]) {
+    console.log(`${platform}は既に更新中です`);
+    return;
+  }
+  
+  // 前回の更新からの経過時間を確認
+  const now = Date.now();
+  const lastUpdateKey = `last${platform.charAt(0).toUpperCase() + platform.slice(1)}Update`;
+  
+  chrome.storage.local.get([lastUpdateKey], (data) => {
+    const lastUpdate = data[lastUpdateKey] || 0;
+    const timeSinceLastUpdate = now - lastUpdate;
+    
+    // 一定時間内の重複更新を防止（1分）
+    if (timeSinceLastUpdate < 60000) {
+      console.log(`${platform}の前回の更新から${Math.floor(timeSinceLastUpdate/1000)}秒しか経過していません。スキップします`);
+      return;
+    }
+    
+    // 更新中フラグを設定
+    updatingPlatforms[platform] = true;
+    
+    // ローダーを表示
+    if (loader) {
+      loader.textContent = getUpdatingMessage();
+      loader.classList.remove('hidden');
+    }
+    
+    // 実際の更新リクエストを送信
+    sendUpdateRequest(platform);
+    
+    // 最終更新時間を保存
+    chrome.storage.local.set({ [lastUpdateKey]: now });
+  });
+}
+
+/**
  * 更新リクエストを送信する（実際のリクエスト部分を分離）
  * @param {string} platform - 更新するプラットフォーム
  */
@@ -78,6 +122,9 @@ function sendUpdateRequest(platform) {
   
   // リクエスト開始時のタブを記録
   const requestTab = currentPlatformTab;
+  
+  // ログ記録
+  logMessage(`${platform}の更新リクエストを送信`, { time: new Date().toISOString() });
   
   // 特定のプラットフォームのみ更新するためのメッセージを送信
   chrome.runtime.sendMessage({ 
@@ -146,4 +193,44 @@ function sendUpdateRequest(platform) {
       }
     }
   });
-} 
+}
+
+// デバッグ関連の関数を追加
+function logMessage(message, data) {
+  if (chrome.runtime && chrome.runtime.id) {
+    chrome.storage.local.get(['settings'], result => {
+      if (result.settings && result.settings.debugModeEnabled) {
+        console.log(`[${new Date().toISOString()}][popup] ${message}`, data || '');
+      }
+    });
+  }
+}
+
+// DOMContentLoaded イベントリスナーを修正
+document.addEventListener('DOMContentLoaded', async () => {
+  // UIの初期化など他の処理...
+  
+  // 前回のチェックから一定時間経過しているか確認してからYouTubeの更新を要求
+  chrome.storage.local.get(['lastYouTubeUpdate'], async (data) => {
+    const now = Date.now();
+    const lastUpdate = data.lastYouTubeUpdate || 0;
+    
+    // 5分以上経過している場合のみ更新
+    if ((now - lastUpdate) > 300000) {
+      if (currentPlatformTab === 'youtube' || currentPlatformTab === 'all') {
+        requestUpdate('youtube');
+      }
+    } else {
+      console.log(`前回のYouTube更新から${Math.floor((now - lastUpdate)/1000)}秒しか経過していません。初期更新をスキップします`);
+    }
+  });
+});
+
+// 更新ボタンのイベントリスナー
+document.getElementById('refreshButton').addEventListener('click', () => {
+  if (currentPlatformTab === 'all') {
+    updatePlatformsInOrder();
+  } else {
+    requestUpdate(currentPlatformTab);
+  }
+}); 

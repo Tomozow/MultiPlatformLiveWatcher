@@ -9,6 +9,9 @@ let activeRequests = {
   twitcasting: null
 };
 
+// リクエスト間隔の最小値（ミリ秒）
+const MIN_REQUEST_INTERVAL = 60000; // 1分
+
 // 設定とデバッグモードの状態
 let settings = {
   debugModeEnabled: false,
@@ -31,9 +34,6 @@ const testData = {
   ]
 };
 
-// リクエスト間隔の最小値（ミリ秒）
-const MIN_REQUEST_INTERVAL = 60000; // 1分
-
 // 設定を読み込む
 function loadSettings() {
   chrome.storage.local.get(['settings'], data => {
@@ -53,128 +53,6 @@ function loadSettings() {
 
 // 初期設定の読み込み
 loadSettings();
-
-// メッセージリスナーに追加
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 設定更新通知
-  if (request.action === 'settingsUpdated') {
-    if (request.settings) {
-      settings = { ...settings, ...request.settings };
-      
-      if (settings.debugModeEnabled) {
-        console.log('設定更新: デバッグモードが有効になっています');
-      }
-      
-      if (settings.testModeEnabled) {
-        console.log('設定更新: テストモードが有効になっています');
-      }
-    }
-    
-    sendResponse({ success: true });
-    return true;
-  }
-
-  // 更新キャンセルリクエスト
-  if (request.action === 'cancelUpdates') {
-    const platforms = request.platforms || [];
-    
-    if (settings.debugModeEnabled) {
-      console.log('更新キャンセルリクエスト:', platforms);
-    }
-    
-    platforms.forEach(platform => {
-      if (activeRequests[platform]) {
-        if (settings.debugModeEnabled) {
-          console.log(`${platform}のリクエストをキャンセル`);
-        }
-        // fetch APIのabortControllerを使用している場合はabort()
-        if (activeRequests[platform].abort) {
-          activeRequests[platform].abort();
-        }
-        activeRequests[platform] = null;
-      }
-    });
-    
-    sendResponse({ success: true, message: '更新をキャンセルしました' });
-    return true;
-  }
-  
-  // 配信チェックのリクエスト処理を修正
-  if (request.action === 'checkStreams') {
-    const platform = request.platform;
-    
-    // すでに処理中の場合は新しいリクエストを拒否
-    if (platform === 'youtube' && activeRequests[platform].isProcessing) {
-      if (settings.debugModeEnabled) {
-        console.log(`${platform}のリクエストはすでに処理中です`);
-      }
-      sendResponse({ success: false, error: '既に処理中です' });
-      return true;
-    }
-    
-    // 前回のリクエストからの経過時間をチェック
-    const now = Date.now();
-    if (platform === 'youtube' && 
-        (now - activeRequests[platform].lastRequestTime) < MIN_REQUEST_INTERVAL) {
-      if (settings.debugModeEnabled) {
-        console.log(`${platform}のリクエスト間隔が短すぎます。スキップします`);
-      }
-      sendResponse({ success: false, error: 'リクエスト間隔が短すぎます' });
-      return true;
-    }
-    
-    // すでに進行中のリクエストがある場合はキャンセル
-    if (platform === 'youtube' && activeRequests[platform].controller) {
-      if (settings.debugModeEnabled) {
-        console.log(`既存の${platform}リクエストをキャンセルします`);
-      }
-      if (activeRequests[platform].controller.abort) {
-        activeRequests[platform].controller.abort();
-      }
-      activeRequests[platform].controller = null;
-    }
-    
-    if (settings.debugModeEnabled) {
-        console.log(`${platform}の配信チェックリクエスト`);
-    }
-    
-    // テストモードの場合はダミーデータを返す
-    if (settings.testModeEnabled) {
-        if (settings.debugModeEnabled) {
-            console.log(`${platform}のテストデータを返します:`, testData[platform]);
-        }
-        
-        setTimeout(() => {
-            sendResponse({ success: true, streams: testData[platform] || [] });
-        }, 1000); // 1秒の遅延を追加してリクエスト中の状態を模倣
-        
-        return true;
-    }
-    
-    // リクエスト状態を更新
-    const controller = new AbortController();
-    activeRequests[platform].controller = controller;
-    activeRequests[platform].isProcessing = true;
-    activeRequests[platform].lastRequestTime = Date.now();
-    
-    fetchYouTubeData(controller.signal)
-      .then(streams => {
-        activeRequests[platform].controller = null;
-        activeRequests[platform].isProcessing = false;
-        sendResponse({ success: true, streams: streams });
-      })
-      .catch(error => {
-        if (error.name !== 'AbortError') {
-          console.error(`YouTube API呼び出しエラー:`, error);
-        }
-        activeRequests[platform].controller = null;
-        activeRequests[platform].isProcessing = false;
-        sendResponse({ success: false, error: error.message });
-      });
-  } else {
-    // 他のリクエスト処理...
-  }
-});
 
 // YouTubeデータを取得する関数
 async function fetchYouTubeData(signal) {
@@ -207,15 +85,52 @@ async function fetchYouTubeData(signal) {
 
 // チャンネル登録情報を取得する関数
 async function fetchYouTubeSubscriptions(signal) {
-  // 実際のAPI呼び出し実装
-  // ...
-  return [];
+  // ローカルストレージからキャッシュされた登録情報を取得
+  const cachedData = await new Promise(resolve => {
+    chrome.storage.local.get(['youtubeSubscriptionsCache'], data => {
+      resolve(data.youtubeSubscriptionsCache || null);
+    });
+  });
+  
+  // キャッシュされたデータがあり、有効期限内なら使用（1時間キャッシュ）
+  const now = Date.now();
+  if (cachedData && cachedData.timestamp && (now - cachedData.timestamp) < 3600000) {
+    if (settings.debugModeEnabled) {
+      console.log('キャッシュされたYouTubeチャンネル登録情報を使用します');
+    }
+    return cachedData.subscriptions || [];
+  }
+  
+  // 実際のAPI呼び出し
+  try {
+    // ここでAPI呼び出しを実装
+    // ...
+    const subscriptions = []; // APIからの結果
+    
+    // キャッシュを更新
+    await new Promise(resolve => {
+      chrome.storage.local.set({
+        youtubeSubscriptionsCache: {
+          timestamp: now,
+          subscriptions: subscriptions
+        }
+      }, resolve);
+    });
+    
+    return subscriptions;
+  } catch (error) {
+    console.error('YouTube登録情報の取得に失敗しました:', error);
+    // キャッシュがあれば古いデータを返す
+    if (cachedData && cachedData.subscriptions) {
+      return cachedData.subscriptions;
+    }
+    throw error;
+  }
 }
 
 // ライブ配信を検索する関数
 async function fetchYouTubeLiveStreams(channelIds, signal) {
-  // 実際のAPI呼び出し実装
-  // ...
+  // 実装...
   return [];
 }
 
@@ -239,4 +154,171 @@ function cleanupResources() {
 }
 
 // 10分ごとにクリーンアップを実行
-setInterval(cleanupResources, 600000); 
+setInterval(cleanupResources, 600000);
+
+// メッセージリスナーに追加
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 設定更新通知
+  if (request.action === 'settingsUpdated') {
+    if (request.settings) {
+      settings = { ...settings, ...request.settings };
+      
+      if (settings.debugModeEnabled) {
+        console.log('設定更新: デバッグモードが有効になっています');
+      }
+      
+      if (settings.testModeEnabled) {
+        console.log('設定更新: テストモードが有効になっています');
+      }
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // 更新キャンセルリクエスト
+  if (request.action === 'cancelUpdates') {
+    const platforms = request.platforms || [];
+    
+    if (settings.debugModeEnabled) {
+      console.log('更新キャンセルリクエスト:', platforms);
+    }
+    
+    platforms.forEach(platform => {
+      if (platform === 'youtube') {
+        if (activeRequests[platform].controller) {
+          if (settings.debugModeEnabled) {
+            console.log(`${platform}のリクエストをキャンセル`);
+          }
+          if (activeRequests[platform].controller.abort) {
+            activeRequests[platform].controller.abort();
+          }
+          activeRequests[platform].controller = null;
+          activeRequests[platform].isProcessing = false;
+        }
+      } else if (activeRequests[platform]) {
+        if (settings.debugModeEnabled) {
+          console.log(`${platform}のリクエストをキャンセル`);
+        }
+        if (activeRequests[platform].abort) {
+          activeRequests[platform].abort();
+        }
+        activeRequests[platform] = null;
+      }
+    });
+    
+    sendResponse({ success: true, message: '更新をキャンセルしました' });
+    return true;
+  }
+  
+  // 配信チェックのリクエスト処理を修正
+  if (request.action === 'checkStreams') {
+    const platform = request.platform;
+    
+    if (settings.debugModeEnabled) {
+      console.log(`${platform}の配信チェックリクエスト`);
+      // デバッグ用のコールスタック表示
+      console.log('呼び出し元のスタック:', new Error().stack);
+    }
+    
+    // YouTubeの場合の特別処理
+    if (platform === 'youtube') {
+      // すでに処理中の場合は新しいリクエストを拒否
+      if (activeRequests[platform].isProcessing) {
+        if (settings.debugModeEnabled) {
+          console.log(`${platform}のリクエストはすでに処理中です`);
+        }
+        sendResponse({ success: false, error: '既に処理中です' });
+        return true;
+      }
+      
+      // 前回のリクエストからの経過時間をチェック
+      const now = Date.now();
+      if ((now - activeRequests[platform].lastRequestTime) < MIN_REQUEST_INTERVAL) {
+        if (settings.debugModeEnabled) {
+          console.log(`${platform}のリクエスト間隔が短すぎます。スキップします`);
+        }
+        sendResponse({ success: false, error: 'リクエスト間隔が短すぎます' });
+        return true;
+      }
+      
+      // すでに進行中のリクエストがある場合はキャンセル
+      if (activeRequests[platform].controller) {
+        if (settings.debugModeEnabled) {
+          console.log(`既存の${platform}リクエストをキャンセルします`);
+        }
+        if (activeRequests[platform].controller.abort) {
+          activeRequests[platform].controller.abort();
+        }
+        activeRequests[platform].controller = null;
+      }
+      
+      // テストモードの場合はダミーデータを返す
+      if (settings.testModeEnabled) {
+        if (settings.debugModeEnabled) {
+          console.log(`${platform}のテストデータを返します:`, testData[platform]);
+        }
+        
+        setTimeout(() => {
+          sendResponse({ success: true, streams: testData[platform] || [] });
+        }, 1000);
+        
+        return true;
+      }
+      
+      // リクエスト状態を更新
+      const controller = new AbortController();
+      activeRequests[platform].controller = controller;
+      activeRequests[platform].isProcessing = true;
+      activeRequests[platform].lastRequestTime = now;
+      
+      // 非同期処理の開始
+      fetchYouTubeData(controller.signal)
+        .then(streams => {
+          if (settings.debugModeEnabled) {
+            console.log(`${platform}のデータ取得が完了しました`);
+          }
+          activeRequests[platform].controller = null;
+          activeRequests[platform].isProcessing = false;
+          sendResponse({ success: true, streams: streams });
+        })
+        .catch(error => {
+          if (error.name !== 'AbortError') {
+            console.error(`${platform} API呼び出しエラー:`, error);
+          }
+          activeRequests[platform].controller = null;
+          activeRequests[platform].isProcessing = false;
+          sendResponse({ success: false, error: error.message });
+        });
+      
+      return true; // 非同期レスポンスを使用することを示す
+    } 
+    else if (platform === 'twitch' || platform === 'twitcasting') {
+      // Twitch、TwitCasting用の処理
+      // ...
+      
+      // テストモードの場合
+      if (settings.testModeEnabled) {
+        setTimeout(() => {
+          sendResponse({ success: true, streams: testData[platform] || [] });
+        }, 1000);
+        return true;
+      }
+      
+      // 実際の処理
+      // ...
+      
+      // 処理完了後
+      activeRequests[platform] = null;
+      sendResponse({ success: true, streams: [] });
+      
+      return true;
+    }
+    
+    // プラットフォームが不明な場合
+    sendResponse({ success: false, error: '不明なプラットフォーム' });
+    return true;
+  }
+
+  // 他のリクエスト処理...
+}); 
