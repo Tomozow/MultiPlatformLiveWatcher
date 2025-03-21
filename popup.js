@@ -73,7 +73,7 @@ tabButtons.forEach(button => {
  * プラットフォーム更新のリクエストを管理
  * @param {string} platform - 更新するプラットフォーム
  */
-function requestUpdate(platform) {
+function requestUpdate(platform, isUserInitiated = false) {
   console.log(`${platform}の更新をリクエスト`);
   
   // 更新中フラグを確認
@@ -90,8 +90,8 @@ function requestUpdate(platform) {
     const lastUpdate = data[lastUpdateKey] || 0;
     const timeSinceLastUpdate = now - lastUpdate;
     
-    // 一定時間内の重複更新を防止（1分）
-    if (timeSinceLastUpdate < 60000) {
+    // 一定時間内の重複更新を防止（10秒）
+    if (timeSinceLastUpdate < 10000) {
       console.log(`${platform}の前回の更新から${Math.floor(timeSinceLastUpdate/1000)}秒しか経過していません。スキップします`);
       return;
     }
@@ -106,7 +106,7 @@ function requestUpdate(platform) {
     }
     
     // 実際の更新リクエストを送信
-    sendUpdateRequest(platform);
+    sendUpdateRequest(platform, isUserInitiated);
     
     // 最終更新時間を保存
     chrome.storage.local.set({ [lastUpdateKey]: now });
@@ -117,7 +117,7 @@ function requestUpdate(platform) {
  * 更新リクエストを送信する（実際のリクエスト部分を分離）
  * @param {string} platform - 更新するプラットフォーム
  */
-function sendUpdateRequest(platform) {
+function sendUpdateRequest(platform, isUserInitiated = false) {
   console.log(`${platform}の更新リクエストを送信`);
   
   // リクエスト開始時のタブを記録
@@ -135,7 +135,8 @@ function sendUpdateRequest(platform) {
   // 特定のプラットフォームのみ更新するためのメッセージを送信
   chrome.runtime.sendMessage({ 
     action: 'checkStreams',
-    platform: platform
+    platform: platform,
+    isUserInitiated: isUserInitiated
   }, response => {
     // タブが切り替わっていたら結果を無視
     if (requestTab !== currentPlatformTab) {
@@ -156,13 +157,23 @@ function sendUpdateRequest(platform) {
           statusMessage.textContent = response.info || '最近更新済み';
           // 3秒後に元に戻す
           setTimeout(() => {
-            statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(activeRequests[platform].lastRequestTime), 'time')}`;
+            chrome.storage.local.get([`last${platform.charAt(0).toUpperCase() + platform.slice(1)}Update`], (data) => {
+              const lastUpdate = data[`last${platform.charAt(0).toUpperCase() + platform.slice(1)}Update`] || Date.now();
+              statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(lastUpdate), 'time')}`;
+            });
           }, 3000);
         }
         
-        // ローダーを非表示
+        // 次のプラットフォームの更新をチェック
+        checkNextPlatformUpdate();
+        
+        // 更新状態の表示を更新
         if (loader) {
-          loader.classList.add('hidden');
+          if (isAnyPlatformUpdating() || updateQueue.length > 0) {
+            loader.textContent = getUpdatingMessage();
+          } else {
+            loader.classList.add('hidden');
+          }
         }
         
         return;
@@ -175,13 +186,22 @@ function sendUpdateRequest(platform) {
       
       // プラットフォーム別のデータを更新（確実に正しいプラットフォームのデータのみを保存）
       if (platform === 'twitch') {
-        platformStreams.twitch = response.streams.filter(stream => stream.platform === 'twitch');
+        platformStreams.twitch = response.streams.map(stream => ({
+          ...stream,
+          platform: 'twitch'
+        }));
         console.log(`Twitchストリーム更新: ${platformStreams.twitch.length}件`);
       } else if (platform === 'youtube') {
-        platformStreams.youtube = response.streams.filter(stream => stream.platform === 'youtube');
+        platformStreams.youtube = response.streams.map(stream => ({
+          ...stream,
+          platform: 'youtube'
+        }));
         console.log(`YouTubeストリーム更新: ${platformStreams.youtube.length}件`);
       } else if (platform === 'twitcasting') {
-        platformStreams.twitcasting = response.streams.filter(stream => stream.platform === 'twitcasting');
+        platformStreams.twitcasting = response.streams.map(stream => ({
+          ...stream,
+          platform: 'twitcasting'
+        }));
         console.log(`TwitCastingストリーム更新: ${platformStreams.twitcasting.length}件`);
       }
       
@@ -295,10 +315,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // 現在のタブに基づいて更新
   if (currentPlatformTab === 'all') {
-    // すべてのプラットフォームをチェック
+    // すべてのプラットフォームをチェック - 間隔を広げる
     setTimeout(() => checkLastUpdate('youtube'), 0);
-    setTimeout(() => checkLastUpdate('twitch'), 1000);
-    setTimeout(() => checkLastUpdate('twitcasting'), 2000);
+    setTimeout(() => checkLastUpdate('twitch'), 3000);  // 3秒後
+    setTimeout(() => checkLastUpdate('twitcasting'), 6000);  // 6秒後
   } else if (['youtube', 'twitch', 'twitcasting'].includes(currentPlatformTab)) {
     checkLastUpdate(currentPlatformTab);
   }
@@ -307,8 +327,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 更新ボタンのイベントリスナー
 document.getElementById('refreshButton').addEventListener('click', () => {
   if (currentPlatformTab === 'all') {
-    updatePlatformsInOrder();
+    updatePlatformsInOrder(true);
   } else {
-    requestUpdate(currentPlatformTab);
+    requestUpdate(currentPlatformTab, true);
   }
-}); 
+});
+
+function displayStreams() {
+  if (!streamsGrid) return;
+  
+  console.log('displayStreams呼び出し - 現在のタブ:', currentPlatformTab);
+  console.log('表示データ:', {
+    all: allStreams.length,
+    twitch: platformStreams.twitch.length,
+    youtube: platformStreams.youtube.length,
+    twitcasting: platformStreams.twitcasting.length
+  });
+  
+  // 表示するストリーム
+  let streamsToDisplay = [];
+  
+  if (currentPlatformTab === 'all') {
+    streamsToDisplay = allStreams;
+  } else if (currentPlatformTab === 'twitch') {
+    streamsToDisplay = platformStreams.twitch;
+  } else if (currentPlatformTab === 'youtube') {
+    streamsToDisplay = platformStreams.youtube;
+  } else if (currentPlatformTab === 'twitcasting') {
+    streamsToDisplay = platformStreams.twitcasting;
+  }
+  
+  console.log(`表示対象: ${streamsToDisplay.length}件`);
+  
+  // ここに実際の表示ロジック...
+}
+
+// 変数の初期化が適切に行われているか確認
+let platformStreams = {
+  twitch: [],
+  youtube: [],
+  twitcasting: []
+};
+
+let allStreams = []; 

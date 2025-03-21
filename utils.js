@@ -24,4 +24,19 @@ if (typeof module !== 'undefined') {
     logMessage,
     sendMessageWithLog
   };
+}
+
+// 日付のフォーマット
+const Utils = {
+  formatDate: function(date, format) {
+    if (format === 'time') {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleString();
+  }
+};
+
+// グローバルに公開
+if (typeof window !== 'undefined') {
+  window.Utils = Utils;
 } 

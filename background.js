@@ -18,7 +18,7 @@ let activeRequests = {
 };
 
 // リクエスト間隔の最小値（ミリ秒）
-const MIN_REQUEST_INTERVAL = 10000; // 10秒
+let MIN_REQUEST_INTERVAL = 10000; // 初期値: 10秒
 
 // 設定とデバッグモードの状態
 let settings = {
@@ -84,7 +84,11 @@ async function fetchYouTubeData(signal) {
     const channelIds = subscriptions.map(sub => sub.channelId);
     const liveStreams = await fetchYouTubeLiveStreams(channelIds, signal);
     
-    return liveStreams;
+    // 重要: platformプロパティを追加
+    return liveStreams.map(stream => ({
+      ...stream,
+      platform: 'youtube' // プラットフォーム情報を追加
+    }));
   } catch (error) {
     console.error('YouTube データ取得中にエラーが発生しました:', error);
     throw error;
@@ -93,70 +97,45 @@ async function fetchYouTubeData(signal) {
 
 // チャンネル登録情報を取得する関数
 async function fetchYouTubeSubscriptions(signal) {
-  // ローカルストレージからキャッシュされた登録情報を取得
-  const cachedData = await new Promise(resolve => {
-    chrome.storage.local.get(['youtubeSubscriptionsCache'], data => {
-      resolve(data.youtubeSubscriptionsCache || null);
-    });
-  });
+  // テスト用に一時的にダミーデータを返す
+  const subscriptions = [
+    { channelId: 'channel1', title: 'テストチャンネル1' },
+    { channelId: 'channel2', title: 'テストチャンネル2' }
+  ];
   
-  // キャッシュされたデータがあり、有効期限内なら使用（1時間キャッシュ）
-  const now = Date.now();
-  if (cachedData && cachedData.timestamp && (now - cachedData.timestamp) < 3600000) {
-    if (settings.debugModeEnabled) {
-      console.log('キャッシュされたYouTubeチャンネル登録情報を使用します');
-    }
-    return cachedData.subscriptions || [];
-  }
-  
-  // 実際のAPI呼び出し
-  try {
-    // ここでAPI呼び出しを実装
-    // ...
-    const subscriptions = []; // APIからの結果
-    
-    // キャッシュを更新
-    await new Promise(resolve => {
-      chrome.storage.local.set({
-        youtubeSubscriptionsCache: {
-          timestamp: now,
-          subscriptions: subscriptions
-        }
-      }, resolve);
-    });
-    
-    return subscriptions;
-  } catch (error) {
-    console.error('YouTube登録情報の取得に失敗しました:', error);
-    // キャッシュがあれば古いデータを返す
-    if (cachedData && cachedData.subscriptions) {
-      return cachedData.subscriptions;
-    }
-    throw error;
-  }
+  return subscriptions;
 }
 
 // ライブ配信を検索する関数
 async function fetchYouTubeLiveStreams(channelIds, signal) {
-  // 実装...
-  return [];
+  // テスト用に一時的にダミーデータを返す
+  const streams = [
+    { 
+      id: 'yt-live1', 
+      channelTitle: 'YouTubeChannel1', 
+      title: '[実装中] YouTubeのライブ配信', 
+      concurrentViewers: 512, 
+      thumbnail: 'https://via.placeholder.com/480x360/ff0000/ffffff?text=YouTube+Test',
+      publishedAt: new Date().toISOString()
+    }
+  ];
+  
+  return streams;
 }
 
 // 定期的にキャッシュやリクエスト状態をクリーンアップ
 function cleanupResources() {
   Object.keys(activeRequests).forEach(platform => {
     // 長時間放置されたリクエストをキャンセル
-    if (platform === 'youtube') {
-      const now = Date.now();
-      if (activeRequests[platform].isProcessing && 
-          (now - activeRequests[platform].lastRequestTime) > 300000) { // 5分以上経過
-        console.log(`放置された${platform}リクエストをキャンセルします`);
-        if (activeRequests[platform].controller && activeRequests[platform].controller.abort) {
-          activeRequests[platform].controller.abort();
-        }
-        activeRequests[platform].controller = null;
-        activeRequests[platform].isProcessing = false;
+    const now = Date.now();
+    if (activeRequests[platform].isProcessing && 
+        (now - activeRequests[platform].lastRequestTime) > 300000) { // 5分以上経過
+      console.log(`放置された${platform}リクエストをキャンセルします`);
+      if (activeRequests[platform].controller && activeRequests[platform].controller.abort) {
+        activeRequests[platform].controller.abort();
       }
+      activeRequests[platform].controller = null;
+      activeRequests[platform].isProcessing = false;
     }
   });
 }
@@ -171,14 +150,37 @@ async function fetchTwitchData(signal) {
       console.log('Twitch API リクエスト: /streams');
     }
     
-    // Twitchの実際のAPI呼び出し処理をここに実装
-    // ...
-    const streams = []; // APIからの結果
+    // テスト用に一時的にダミーデータを返す
+    const streams = [
+      { 
+        id: 'test1', 
+        user_name: 'TwitchStreamer1', 
+        title: '[実装中] Twitchの配信', 
+        viewer_count: 128, 
+        game_name: 'テストゲーム', 
+        thumbnail_url: 'https://via.placeholder.com/440x248/6441a5/ffffff?text=Twitch+Test', 
+        started_at: new Date().toISOString(),
+        platform: 'twitch' // プラットフォーム情報を追加
+      }
+    ];
     
     return streams;
   } catch (error) {
     console.error('Twitch データ取得中にエラーが発生しました:', error);
     throw error;
+  }
+}
+
+// 間隔を動的に調整
+function adjustRequestInterval(platform, isUserInitiated) {
+  // ユーザーによる明示的な更新の場合は、間隔を短くする
+  if (isUserInitiated) {
+    MIN_REQUEST_INTERVAL = 5000; // 5秒
+    
+    // 一定時間後に元に戻す
+    setTimeout(() => {
+      MIN_REQUEST_INTERVAL = 10000; // 10秒に戻す
+    }, 60000); // 1分後
   }
 }
 
@@ -230,6 +232,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 配信チェックのリクエスト処理を修正
   if (request.action === 'checkStreams') {
     const platform = request.platform;
+    const isUserInitiated = request.isUserInitiated || false;
+    
+    // 間隔を調整
+    adjustRequestInterval(platform, isUserInitiated);
     
     if (settings.debugModeEnabled) {
       console.log(`${platform}の配信チェックリクエスト`);
@@ -292,8 +298,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           console.log(`${platform}のテストデータを返します:`, testData[platform]);
         }
         
+        // テストデータにplatformプロパティを追加
+        const streamsWithPlatform = testData[platform].map(stream => ({
+          ...stream,
+          platform: platform
+        }));
+        
+        // データをキャッシュに保存
+        chrome.storage.local.set({ [`${platform}Data`]: streamsWithPlatform });
+        
         setTimeout(() => {
-          sendResponse({ success: true, streams: testData[platform] || [] });
+          sendResponse({ success: true, streams: streamsWithPlatform });
         }, 1000);
         
         return true;
@@ -337,7 +352,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
           activeRequests[platform].controller = null;
           activeRequests[platform].isProcessing = false;
-          sendResponse({ success: false, error: error.message });
+          
+          // エラー時には前回のキャッシュデータがあれば使用
+          chrome.storage.local.get([`${platform}Data`], (data) => {
+            const cachedData = data[`${platform}Data`] || [];
+            
+            // エラーが発生したが、キャッシュデータがある場合
+            if (cachedData.length > 0) {
+              sendResponse({ 
+                success: true, 
+                streams: cachedData,
+                info: 'エラーが発生しました。前回のデータを表示しています',
+                error: error.message  // エラー情報も付加
+              });
+            } else {
+              // キャッシュもない場合は失敗として処理
+              sendResponse({ success: false, error: error.message });
+            }
+          });
         });
       
       return true; // 非同期レスポンスを使用することを示す
@@ -349,4 +381,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // 他のリクエスト処理...
+});
+
+// DOMContentLoaded イベントリスナーを修正
+document.addEventListener('DOMContentLoaded', async () => {
+  // デバッグモードとテストモードを一時的に有効化
+  chrome.storage.local.set({
+    settings: {
+      debugModeEnabled: true,
+      testModeEnabled: true  // テストモードも有効化
+    }
+  }, () => {
+    console.log('デバッグモードとテストモードを有効化しました');
+  });
+  
+  // 以下は同じ...
 }); 
