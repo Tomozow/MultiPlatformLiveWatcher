@@ -123,6 +123,12 @@ function sendUpdateRequest(platform) {
   // リクエスト開始時のタブを記録
   const requestTab = currentPlatformTab;
   
+  // ローダーを表示
+  if (loader) {
+    loader.textContent = getUpdatingMessage();
+    loader.classList.remove('hidden');
+  }
+  
   // ログ記録
   logMessage(`${platform}の更新リクエストを送信`, { time: new Date().toISOString() });
   
@@ -141,6 +147,27 @@ function sendUpdateRequest(platform) {
     updatingPlatforms[platform] = false;
     
     if (response && response.success) {
+      // noRefreshフラグがある場合は処理をスキップ
+      if (response.noRefresh) {
+        console.log(`${platform}: ${response.info || '更新なし'}`);
+        
+        // 情報メッセージを表示
+        if (statusMessage) {
+          statusMessage.textContent = response.info || '最近更新済み';
+          // 3秒後に元に戻す
+          setTimeout(() => {
+            statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(activeRequests[platform].lastRequestTime), 'time')}`;
+          }, 3000);
+        }
+        
+        // ローダーを非表示
+        if (loader) {
+          loader.classList.add('hidden');
+        }
+        
+        return;
+      }
+      
       // APIエラーフラグをリセット（YouTubeのクォータエラーは特別扱い）
       if (!(platform === 'youtube' && platformErrors.youtube)) {
         platformErrors[platform] = false;
@@ -218,20 +245,63 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('デバッグモードを有効化しました');
   });
   
-  // 前回のチェックから一定時間経過しているか確認してからYouTubeの更新を要求
-  chrome.storage.local.get(['lastYouTubeUpdate'], async (data) => {
-    const now = Date.now();
-    const lastUpdate = data.lastYouTubeUpdate || 0;
-    
-    // 5分以上経過している場合のみ更新
-    if ((now - lastUpdate) > 300000) {
-      if (currentPlatformTab === 'youtube' || currentPlatformTab === 'all') {
-        requestUpdate('youtube');
-      }
-    } else {
-      console.log(`前回のYouTube更新から${Math.floor((now - lastUpdate)/1000)}秒しか経過していません。初期更新をスキップします`);
+  // 各プラットフォームの最新のキャッシュデータを取得して表示
+  chrome.storage.local.get(['youtubeData', 'twitchData', 'twitcastingData'], (data) => {
+    // キャッシュデータがあれば読み込む
+    if (data.youtubeData) {
+      platformStreams.youtube = data.youtubeData;
+      console.log(`YouTubeキャッシュデータを読み込み: ${platformStreams.youtube.length}件`);
     }
+    
+    if (data.twitchData) {
+      platformStreams.twitch = data.twitchData;
+      console.log(`Twitchキャッシュデータを読み込み: ${platformStreams.twitch.length}件`);
+    }
+    
+    if (data.twitcastingData) {
+      platformStreams.twitcasting = data.twitcastingData;
+      console.log(`TwitCastingキャッシュデータを読み込み: ${platformStreams.twitcasting.length}件`);
+    }
+    
+    // 全体のストリームも更新
+    allStreams = [
+      ...platformStreams.twitch,
+      ...platformStreams.youtube,
+      ...platformStreams.twitcasting
+    ];
+    
+    // 表示を更新
+    displayStreams();
   });
+  
+  // 前回の更新から一定時間経過しているか確認
+  // 30秒以上経過していれば自動更新（短縮）
+  const checkLastUpdate = (platform) => {
+    const lastUpdateKey = `last${platform.charAt(0).toUpperCase() + platform.slice(1)}Update`;
+    
+    chrome.storage.local.get([lastUpdateKey], (data) => {
+      const now = Date.now();
+      const lastUpdate = data[lastUpdateKey] || 0;
+      
+      if ((now - lastUpdate) > 30000) { // 30秒以上経過
+        if (currentPlatformTab === platform || currentPlatformTab === 'all') {
+          requestUpdate(platform);
+        }
+      } else {
+        console.log(`前回の${platform}更新から${Math.floor((now - lastUpdate)/1000)}秒しか経過していません。初期更新をスキップします`);
+      }
+    });
+  };
+  
+  // 現在のタブに基づいて更新
+  if (currentPlatformTab === 'all') {
+    // すべてのプラットフォームをチェック
+    setTimeout(() => checkLastUpdate('youtube'), 0);
+    setTimeout(() => checkLastUpdate('twitch'), 1000);
+    setTimeout(() => checkLastUpdate('twitcasting'), 2000);
+  } else if (['youtube', 'twitch', 'twitcasting'].includes(currentPlatformTab)) {
+    checkLastUpdate(currentPlatformTab);
+  }
 });
 
 // 更新ボタンのイベントリスナー

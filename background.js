@@ -18,7 +18,7 @@ let activeRequests = {
 };
 
 // リクエスト間隔の最小値（ミリ秒）
-const MIN_REQUEST_INTERVAL = 60000; // 1分
+const MIN_REQUEST_INTERVAL = 10000; // 10秒
 
 // 設定とデバッグモードの状態
 let settings = {
@@ -233,7 +233,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     if (settings.debugModeEnabled) {
       console.log(`${platform}の配信チェックリクエスト`);
-      // デバッグ用のコールスタック表示
       console.log('呼び出し元のスタック:', new Error().stack);
     }
     
@@ -244,17 +243,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (settings.debugModeEnabled) {
           console.log(`${platform}のリクエストはすでに処理中です`);
         }
-        sendResponse({ success: false, error: '既に処理中です' });
+        sendResponse({ 
+          success: true,  // ユーザー体験のためtrueを返す
+          streams: [],    // 空の配列を返す
+          info: '更新中',   // 情報メッセージ
+          noRefresh: true  // 表示を更新しないフラグ
+        });
         return true;
       }
       
       // 前回のリクエストからの経過時間をチェック
       const now = Date.now();
-      if ((now - activeRequests[platform].lastRequestTime) < MIN_REQUEST_INTERVAL) {
+      const timeSinceLastUpdate = now - activeRequests[platform].lastRequestTime;
+      if (timeSinceLastUpdate < MIN_REQUEST_INTERVAL) {
         if (settings.debugModeEnabled) {
           console.log(`${platform}のリクエスト間隔が短すぎます。スキップします`);
         }
-        sendResponse({ success: false, error: 'リクエスト間隔が短すぎます' });
+        
+        // 前回のデータがあれば再利用
+        chrome.storage.local.get([`${platform}Data`], (data) => {
+          const cachedData = data[`${platform}Data`] || [];
+          
+          sendResponse({ 
+            success: true,  // 成功として処理
+            streams: cachedData,  // キャッシュデータを返す
+            info: `最近更新済み (${Math.floor(timeSinceLastUpdate/1000)}秒前)`,
+            noRefresh: true  // 表示を更新しないフラグ
+          });
+        });
+        
         return true;
       }
       
@@ -308,6 +325,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
           activeRequests[platform].controller = null;
           activeRequests[platform].isProcessing = false;
+          
+          // データをキャッシュに保存
+          chrome.storage.local.set({ [`${platform}Data`]: streams });
+          
           sendResponse({ success: true, streams: streams });
         })
         .catch(error => {
