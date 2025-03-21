@@ -83,9 +83,9 @@ let schedules = [];
 
 // プラットフォームごとの最新有効データを保持する変数を追加
 let lastValidData = {
-  twitch: { streams: [], timestamp: 0 },
-  youtube: { streams: [], timestamp: 0 },
-  twitcasting: { streams: [], timestamp: 0 }
+  twitch: { streams: [], timestamp: null },
+  youtube: { streams: [], timestamp: null },
+  twitcasting: { streams: [], timestamp: null }
 };
 
 // データの有効期限（12時間）
@@ -390,46 +390,36 @@ function initializeApiClients() {
  * 前回の有効なデータを読み込む
  */
 async function loadLastValidData() {
-  const data = await new Promise(resolve => {
-    chrome.storage.local.get(['lastValidData'], resolve);
-  });
-  
-  if (data.lastValidData) {
-    lastValidData = data.lastValidData;
-    console.log('前回の有効なデータを読み込みました:', 
-      Object.keys(lastValidData).map(platform => 
-        `${platform}: ${lastValidData[platform].streams.length}件`
-      ).join(', ')
-    );
+  for (const platform of ['twitch', 'youtube', 'twitcasting']) {
+    try {
+      const data = await chrome.storage.local.get(`lastValidData_${platform}`);
+      if (data[`lastValidData_${platform}`]) {
+        lastValidData[platform] = data[`lastValidData_${platform}`];
+      }
+    } catch (error) {
+      console.error(`Error loading ${platform} data:`, error);
+    }
   }
 }
 
 /**
  * プラットフォームの有効なデータを更新
  */
-async function updateValidData(platform, newStreams) {
-  if (!newStreams || !Array.isArray(newStreams)) {
-    console.warn(`${platform}: 無効なデータフォーマット`);
-    return;
-  }
-
-  // データが空の場合は更新しない（エラー時の誤更新を防ぐ）
-  if (newStreams.length === 0) {
-    console.warn(`${platform}: 空のデータセットは保存しません`);
+async function updateValidData(platform, newData) {
+  if (!newData || !Array.isArray(newData) || newData.length === 0) {
+    console.warn(`[${platform}] Empty or invalid data received, keeping existing data`);
     return;
   }
 
   lastValidData[platform] = {
-    streams: newStreams,
-    timestamp: Date.now()
+    streams: newData,
+    timestamp: new Date().getTime()
   };
 
   // ストレージに保存
-  await new Promise(resolve => {
-    chrome.storage.local.set({ lastValidData }, resolve);
+  await chrome.storage.local.set({
+    [`lastValidData_${platform}`]: lastValidData[platform]
   });
-
-  console.log(`${platform}: 有効なデータを更新しました (${newStreams.length}件)`);
 }
 
 /**
@@ -2350,6 +2340,13 @@ class TestScenarios {
    */
   async testAllPlatformsError() {
     try {
+      // エラー前のデータを保存
+      const initialData = {
+        twitch: streams.filter(s => s.platform === 'twitch'),
+        youtube: streams.filter(s => s.platform === 'youtube'),
+        twitcasting: streams.filter(s => s.platform === 'twitcasting')
+      };
+
       // すべてのプラットフォームでエラー
       ['twitch', 'youtube', 'twitcasting'].forEach(platform => {
         this.helper.mockApi(platform, this.helper.simulateError('network', platform));
@@ -2359,18 +2356,32 @@ class TestScenarios {
       await checkAllStreams();
       const afterCount = streams.length;
 
-      // キャッシュが機能していることを確認
-      if (afterCount > 0) {
+      // プラットフォームごとのデータ保持を確認
+      const retainedData = {
+        twitch: streams.filter(s => s.platform === 'twitch').length > 0,
+        youtube: streams.filter(s => s.platform === 'youtube').length > 0,
+        twitcasting: streams.filter(s => s.platform === 'twitcasting').length > 0
+      };
+
+      // すべてのプラットフォームでキャッシュデータが保持されているか確認
+      const allPlatformsRetained = Object.values(retainedData).every(v => v);
+
+      if (afterCount > 0 && allPlatformsRetained) {
         this.helper.logTestResult(
           'All Platforms Error',
           true,
-          `Successfully used cached data. Streams: ${afterCount}`
+          `Successfully retained all platform data. Streams: ${afterCount}`
         );
       } else {
+        const lostPlatforms = Object.entries(retainedData)
+          .filter(([_, retained]) => !retained)
+          .map(([platform]) => platform)
+          .join(', ');
+
         this.helper.logTestResult(
           'All Platforms Error',
           false,
-          `Failed to handle all platform errors. Before: ${beforeCount}, After: ${afterCount}`
+          `Failed to retain data for platforms: ${lostPlatforms}. Before: ${beforeCount}, After: ${afterCount}`
         );
       }
     } catch (error) {
