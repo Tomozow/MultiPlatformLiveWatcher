@@ -64,6 +64,11 @@ tabButtons.forEach(button => {
       requestUpdate(currentPlatformTab);
     }
     
+    // ステータスメッセージを更新
+    if (statusMessage) {
+      statusMessage.textContent = '更新中...';
+    }
+    
     // 表示を更新
     displayStreams();
   });
@@ -78,6 +83,12 @@ function sendUpdateRequest(platform) {
   
   // リクエスト開始時のタブを記録
   const requestTab = currentPlatformTab;
+  
+  // ローダーを表示
+  if (loader) {
+    loader.classList.remove('hidden');
+    loader.textContent = getUpdatingMessage();
+  }
   
   // 特定のプラットフォームのみ更新するためのメッセージを送信
   chrome.runtime.sendMessage({ 
@@ -147,4 +158,38 @@ function sendUpdateRequest(platform) {
       }
     }
   });
+}
+
+/**
+ * 更新エラーを処理する
+ * @param {string} platform - エラーが発生したプラットフォーム
+ * @param {string} errorMessage - エラーメッセージ
+ */
+function handleUpdateError(platform, errorMsg) {
+  console.error(`${platform}の更新に失敗:`, errorMsg);
+  
+  // プラットフォーム別のエラーフラグを設定
+  platformErrors[platform] = true;
+  
+  // エラーメッセージ要素が存在する場合
+  if (errorMessage) {
+    if (platform === 'youtube' && errorMsg.includes('quota')) {
+      // YouTubeのクォータエラーの場合は特別なメッセージを表示
+      errorMessage.innerHTML = `
+        <div class="api-error-container">
+          <p>YouTube APIの制限に達しました。制限は24時間後にリセットされます。</p>
+          <a href="https://www.youtube.com/subscriptions" target="_blank" class="youtube-link-button">YouTubeを開く</a>
+        </div>`;
+      errorMessage.classList.remove('hidden');
+    } else {
+      // 通常のエラーメッセージ
+      errorMessage.textContent = `${platform}の更新に失敗しました: ${errorMsg}`;
+      errorMessage.classList.remove('hidden');
+    }
+  }
+  
+  // ステータスメッセージも更新
+  if (statusMessage) {
+    statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(), 'time')} (一部エラー)`;
+  }
 } 
