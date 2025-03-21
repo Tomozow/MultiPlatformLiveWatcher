@@ -91,6 +91,9 @@ let lastValidData = {
 // データの有効期限（12時間）
 const DATA_VALIDITY_DURATION = 12 * 60 * 60 * 1000;
 
+// デバッグモードフラグを追加
+const DEBUG_MODE = true;
+
 /**
  * 初期化処理を拡張
  */
@@ -2132,6 +2135,332 @@ class TwitCastingApiClient {
     
     console.log(`TwitCasting: ${streams.length}件の配信を取得しました`);
     return streams;
+  }
+}
+
+// テストヘルパークラス
+class TestHelper {
+  constructor() {
+    this.originalApis = {};
+    this.testResults = [];
+  }
+
+  /**
+   * テスト結果を記録
+   */
+  logTestResult(scenario, success, message, error = null) {
+    const result = {
+      scenario,
+      success,
+      message,
+      timestamp: new Date().toISOString(),
+      error: error ? error.message : null,
+      streamsCount: {
+        total: streams.length,
+        twitch: streams.filter(s => s.platform === 'twitch').length,
+        youtube: streams.filter(s => s.platform === 'youtube').length,
+        twitcasting: streams.filter(s => s.platform === 'twitcasting').length
+      },
+      cacheStatus: {
+        twitch: lastValidData.twitch?.streams?.length || 0,
+        youtube: lastValidData.youtube?.streams?.length || 0,
+        twitcasting: lastValidData.twitcasting?.streams?.length || 0
+      }
+    };
+
+    this.testResults.push(result);
+    
+    // テスト結果をストレージに保存
+    chrome.storage.local.set({
+      testResults: this.testResults.slice(-100) // 最新100件のみ保持
+    });
+
+    if (success) {
+      console.log(`[TEST SUCCESS] ${scenario}: ${message}`, result);
+    } else {
+      console.error(`[TEST FAILED] ${scenario}: ${message}`, result);
+    }
+  }
+
+  /**
+   * APIをモック化
+   */
+  mockApi(platform, mockFunction) {
+    if (!this.originalApis[platform]) {
+      this.originalApis[platform] = apiClients[platform].request;
+    }
+    apiClients[platform].request = mockFunction;
+  }
+
+  /**
+   * APIを元に戻す
+   */
+  restoreApi(platform) {
+    if (this.originalApis[platform]) {
+      apiClients[platform].request = this.originalApis[platform];
+      delete this.originalApis[platform];
+    }
+  }
+
+  /**
+   * すべてのAPIを元に戻す
+   */
+  restoreAllApis() {
+    Object.keys(this.originalApis).forEach(platform => {
+      this.restoreApi(platform);
+    });
+  }
+
+  /**
+   * エラーをシミュレート
+   */
+  simulateError(type, platform) {
+    switch (type) {
+      case 'network':
+        return async () => {
+          throw new Error(`Simulated Network Error for ${platform}`);
+        };
+      case 'quota':
+        return async () => {
+          const error = new Error(`Simulated Quota Error for ${platform}`);
+          error.isQuotaError = true;
+          throw error;
+        };
+      case 'auth':
+        return async () => {
+          const error = new Error(`Simulated Auth Error for ${platform}`);
+          error.isAuthError = true;
+          throw error;
+        };
+      case 'empty':
+        return async () => [];
+      default:
+        throw new Error(`Unknown error type: ${type}`);
+    }
+  }
+}
+
+// テストシナリオクラス
+class TestScenarios {
+  constructor(testHelper) {
+    this.helper = testHelper;
+  }
+
+  /**
+   * 正常動作テスト
+   */
+  async testNormalOperation() {
+    try {
+      const beforeCount = streams.length;
+      await checkAllStreams();
+      const afterCount = streams.length;
+
+      if (afterCount > 0 && afterCount >= beforeCount) {
+        this.helper.logTestResult(
+          'Normal Operation',
+          true,
+          `Successfully fetched streams: ${afterCount} streams`
+        );
+      } else {
+        this.helper.logTestResult(
+          'Normal Operation',
+          false,
+          `Failed to fetch expected number of streams. Before: ${beforeCount}, After: ${afterCount}`
+        );
+      }
+    } catch (error) {
+      this.helper.logTestResult('Normal Operation', false, 'Test failed with error', error);
+    }
+  }
+
+  /**
+   * ネットワークエラーテスト
+   */
+  async testNetworkError() {
+    try {
+      // YouTubeのみネットワークエラー
+      this.helper.mockApi('youtube', this.helper.simulateError('network', 'youtube'));
+
+      const beforeCount = streams.length;
+      await checkAllStreams();
+      const afterCount = streams.length;
+
+      // キャッシュが機能していることを確認
+      const youtubeStreams = streams.filter(s => s.platform === 'youtube');
+      const hasYoutubeData = youtubeStreams.length > 0;
+
+      if (afterCount > 0 && hasYoutubeData) {
+        this.helper.logTestResult(
+          'Network Error',
+          true,
+          `Successfully handled network error. Streams: ${afterCount}`
+        );
+      } else {
+        this.helper.logTestResult(
+          'Network Error',
+          false,
+          `Failed to handle network error properly. Before: ${beforeCount}, After: ${afterCount}`
+        );
+      }
+    } catch (error) {
+      this.helper.logTestResult('Network Error', false, 'Test failed with error', error);
+    } finally {
+      this.helper.restoreApi('youtube');
+    }
+  }
+
+  /**
+   * 認証エラーテスト
+   */
+  async testAuthError() {
+    try {
+      // Twitchの認証エラー
+      this.helper.mockApi('twitch', this.helper.simulateError('auth', 'twitch'));
+
+      const beforeCount = streams.length;
+      await checkAllStreams();
+      const afterCount = streams.length;
+
+      // キャッシュが機能していることを確認
+      const twitchStreams = streams.filter(s => s.platform === 'twitch');
+      const hasTwitchData = twitchStreams.length > 0;
+
+      if (afterCount > 0 && hasTwitchData) {
+        this.helper.logTestResult(
+          'Auth Error',
+          true,
+          `Successfully handled auth error. Streams: ${afterCount}`
+        );
+      } else {
+        this.helper.logTestResult(
+          'Auth Error',
+          false,
+          `Failed to handle auth error properly. Before: ${beforeCount}, After: ${afterCount}`
+        );
+      }
+    } catch (error) {
+      this.helper.logTestResult('Auth Error', false, 'Test failed with error', error);
+    } finally {
+      this.helper.restoreApi('twitch');
+    }
+  }
+
+  /**
+   * 全プラットフォームエラーテスト
+   */
+  async testAllPlatformsError() {
+    try {
+      // すべてのプラットフォームでエラー
+      ['twitch', 'youtube', 'twitcasting'].forEach(platform => {
+        this.helper.mockApi(platform, this.helper.simulateError('network', platform));
+      });
+
+      const beforeCount = streams.length;
+      await checkAllStreams();
+      const afterCount = streams.length;
+
+      // キャッシュが機能していることを確認
+      if (afterCount > 0) {
+        this.helper.logTestResult(
+          'All Platforms Error',
+          true,
+          `Successfully used cached data. Streams: ${afterCount}`
+        );
+      } else {
+        this.helper.logTestResult(
+          'All Platforms Error',
+          false,
+          `Failed to handle all platform errors. Before: ${beforeCount}, After: ${afterCount}`
+        );
+      }
+    } catch (error) {
+      this.helper.logTestResult('All Platforms Error', false, 'Test failed with error', error);
+    } finally {
+      this.helper.restoreAllApis();
+    }
+  }
+
+  /**
+   * 空レスポンステスト
+   */
+  async testEmptyResponse() {
+    try {
+      // YouTubeの空レスポンス
+      this.helper.mockApi('youtube', this.helper.simulateError('empty', 'youtube'));
+
+      const beforeCount = streams.length;
+      await checkAllStreams();
+      const afterCount = streams.length;
+
+      // キャッシュが機能していることを確認
+      const youtubeStreams = streams.filter(s => s.platform === 'youtube');
+      const hasYoutubeData = youtubeStreams.length > 0;
+
+      if (afterCount > 0 && hasYoutubeData) {
+        this.helper.logTestResult(
+          'Empty Response',
+          true,
+          `Successfully handled empty response. Streams: ${afterCount}`
+        );
+      } else {
+        this.helper.logTestResult(
+          'Empty Response',
+          false,
+          `Failed to handle empty response. Before: ${beforeCount}, After: ${afterCount}`
+        );
+      }
+    } catch (error) {
+      this.helper.logTestResult('Empty Response', false, 'Test failed with error', error);
+    } finally {
+      this.helper.restoreApi('youtube');
+    }
+  }
+}
+
+// テスト実行関数
+async function runTests() {
+  if (!DEBUG_MODE) return;
+
+  console.log('[TEST] テストを開始します');
+  const testHelper = new TestHelper();
+  const scenarios = new TestScenarios(testHelper);
+
+  try {
+    // 各テストシナリオを実行
+    await scenarios.testNormalOperation();
+    await new Promise(resolve => setTimeout(resolve, 1000)); // テスト間隔を設定
+
+    await scenarios.testNetworkError();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await scenarios.testAuthError();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await scenarios.testAllPlatformsError();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await scenarios.testEmptyResponse();
+
+    console.log('[TEST] すべてのテストが完了しました');
+  } catch (error) {
+    console.error('[TEST] テスト実行中にエラーが発生しました:', error);
+  }
+}
+
+// 定期的なテスト実行（開発モードのみ）
+if (DEBUG_MODE) {
+  // 起動時に1回実行
+  setTimeout(() => runTests(), 5000);
+
+  // 30分ごとに実行
+  setInterval(() => runTests(), 30 * 60 * 1000);
+}
+
+// エラー発生時の自動テスト
+function onError(error) {
+  if (DEBUG_MODE) {
+    console.log('[TEST] エラー検出により自動テストを実行します');
+    runTests();
   }
 }
 
