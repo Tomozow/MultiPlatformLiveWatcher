@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "多プラットフォーム配信通知",
   "description": "Twitch、YouTube、TwitCastingの配信状況を一元管理",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icons/icon.png"
