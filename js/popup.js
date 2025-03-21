@@ -85,152 +85,173 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function init() {
     console.log('ポップアップを初期化しています...');
     
-    // DOM要素の存在確認
-    if (!streamsGrid || !loader || !errorMessage || !noStreams || !statusMessage) {
-      console.error('必須のDOM要素が見つかりません');
-      return;
-    }
-    
-    // ボタン要素の存在確認
-    if (!refreshButton || !filterToggle || !filterPanel || !settingsButton || !scheduleButton) {
-      console.error('ボタン要素が見つかりません');
-    }
-    
-    // UI初期化
-    setupEventListeners();
-    
-    // ヘッダーボタンのテキストを絵文字に変更
-    updateHeaderIcons();
-    
-    // 最終ポップアップ表示時間を取得
-    lastPopupOpenTime = await Utils.getStorageData('lastPopupOpenTime', 0);
-    
-    // 現在の時間を保存
-    const currentTime = Date.now();
-    await Utils.setStorageData({'lastPopupOpenTime': currentTime});
-    
-    // ポップアップを開いた回数をカウント（デバッグ用）
-    let openCount = await Utils.getStorageData('popupOpenCount', 0);
-    openCount++;
-    await Utils.setStorageData({'popupOpenCount': openCount});
-    console.log(`ポップアップを開いた回数: ${openCount}`);
-    
-    // 保存されたフィルターを読み込む
-    savedFilters = await Utils.getStorageData('savedFilters', []);
-    updateSavedFiltersList();
-    
-    // スライダー値の表示を更新
-    updateSliderValue();
-    
-    // フィルター初期化
-    initializeFilters();
-
     try {
-      // 非同期で並行して複数のデータを読み込む
-      const [storedData, lastTab, apiErrors, youtubeQuotaError] = await Promise.all([
-        // 保存された配信データを取得
-        new Promise(resolve => {
-          chrome.storage.local.get(['streams', 'favorites', 'settings', 'lastUpdate'], (data) => {
-            resolve(data);
-          });
-        }),
-        // 保存されたタブ情報を取得
-        new Promise(resolve => {
-          chrome.storage.local.get(['lastActiveTab'], (data) => {
-            resolve(data.lastActiveTab || 'all');
-          });
-        }),
-        // API制限エラー情報を取得
-        new Promise(resolve => {
-          chrome.storage.local.get(['platformErrors'], (data) => {
-            resolve(data.platformErrors || {});
-          });
-        }),
-        // YouTube APIクォータエラー情報を特に取得
-        new Promise(resolve => {
-          chrome.storage.local.get(['youtubeQuotaError'], (data) => {
-            resolve(data.youtubeQuotaError || null);
-          });
-        })
-      ]);
-
-      // API制限エラー情報を設定
-      if (apiErrors && typeof apiErrors === 'object') {
-        platformErrors = { ...platformErrors, ...apiErrors };
-        console.log('API制限エラー情報を設定:', platformErrors);
-      }
-
-      // YouTube APIクォータエラーが明示的に存在する場合は必ずフラグを立てる
-      if (youtubeQuotaError) {
-        // 24時間以内のエラーなら有効
-        const errorAge = Date.now() - youtubeQuotaError.timestamp;
-        const HOURS_24 = 24 * 60 * 60 * 1000;
-        
-        if (errorAge < HOURS_24) {
-          platformErrors.youtube = true;
-          console.log('YouTubeのAPIクォータエラーフラグを設定しました（24時間以内のエラー）');
-        } else {
-          console.log('YouTubeのAPIクォータエラーは24時間以上経過しているため、リセット');
-        }
-      }
-
-      // 設定を適用
-      if (storedData.settings) {
-        settings = storedData.settings;
-        console.log('設定を読み込みました', settings);
-      } else {
-        settings = {
-          hoverInfoEnabled: true,
-          viewerCountEnabled: true,
-          platformIconEnabled: true,
-          favoriteIconEnabled: true,
-          platformUpdateOrder: ['twitch', 'youtube', 'twitcasting']
-        };
-      }
-      
-      // 配信データを適用
-      if (storedData.streams && storedData.streams.length > 0) {
-        allStreams = storedData.streams;
-        console.log(`${allStreams.length}件の配信データを読み込みました`);
-        
-        // プラットフォームごとにデータを振り分け
-        platformStreams.twitch = allStreams.filter(stream => stream.platform === 'twitch');
-        platformStreams.youtube = allStreams.filter(stream => stream.platform === 'youtube');
-        platformStreams.twitcasting = allStreams.filter(stream => stream.platform === 'twitcasting');
-        
-        console.log(`Twitch: ${platformStreams.twitch.length}件`);
-        console.log(`YouTube: ${platformStreams.youtube.length}件`);
-        console.log(`TwitCasting: ${platformStreams.twitcasting.length}件`);
-      }
-      
-      // お気に入りを適用
-      if (storedData.favorites) {
-        favorites = storedData.favorites;
-      }
-      
-      // 最終更新時間を表示
-      if (storedData.lastUpdate) {
-        statusMessage.textContent = `最終更新: ${Utils.formatDate(storedData.lastUpdate, 'time')}`;
-      }
-      
-      // 保存されたタブを設定
+      // 前回選択されていたタブを取得
+      const lastTab = await Utils.getStorageData('lastActiveTab', 'all');
       currentPlatformTab = lastTab;
       console.log(`前回選択されていたタブを復元: ${currentPlatformTab}`);
       
       // タブUIを更新
       updateTabUI();
       
-      // 配信を表示（この時点でYouTubeエラーがあれば表示される）
-      displayStreams();
+      // 現在のタブに応じたデータのみを更新
+      if (currentPlatformTab === 'all') {
+        updatePlatformsInOrder();
+      } else {
+        requestUpdate(currentPlatformTab);
+      }
       
-      // 前回の表示から1分以上経過していれば自動更新
-      const ONE_MINUTE = 60 * 1000; // 1分をミリ秒で表現
-      if (currentTime - (storedData.lastUpdate || 0) > ONE_MINUTE || !storedData.lastUpdate) {
-        console.log('前回の更新から1分以上経過したため、自動更新を実行します');
-        // UI更新が完了してから自動更新を開始
-        setTimeout(() => {
-          requestUpdate('all');
-        }, 300);
+      // DOM要素の存在確認
+      if (!streamsGrid || !loader || !errorMessage || !noStreams || !statusMessage) {
+        console.error('必須のDOM要素が見つかりません');
+        return;
+      }
+      
+      // ボタン要素の存在確認
+      if (!refreshButton || !filterToggle || !filterPanel || !settingsButton || !scheduleButton) {
+        console.error('ボタン要素が見つかりません');
+      }
+      
+      // UI初期化
+      setupEventListeners();
+      
+      // ヘッダーボタンのテキストを絵文字に変更
+      updateHeaderIcons();
+      
+      // 最終ポップアップ表示時間を取得
+      lastPopupOpenTime = await Utils.getStorageData('lastPopupOpenTime', 0);
+      
+      // 現在の時間を保存
+      const currentTime = Date.now();
+      await Utils.setStorageData({'lastPopupOpenTime': currentTime});
+      
+      // ポップアップを開いた回数をカウント（デバッグ用）
+      let openCount = await Utils.getStorageData('popupOpenCount', 0);
+      openCount++;
+      await Utils.setStorageData({'popupOpenCount': openCount});
+      console.log(`ポップアップを開いた回数: ${openCount}`);
+      
+      // 保存されたフィルターを読み込む
+      savedFilters = await Utils.getStorageData('savedFilters', []);
+      updateSavedFiltersList();
+      
+      // スライダー値の表示を更新
+      updateSliderValue();
+      
+      // フィルター初期化
+      initializeFilters();
+
+      try {
+        // 非同期で並行して複数のデータを読み込む
+        const [storedData, lastTab, apiErrors, youtubeQuotaError] = await Promise.all([
+          // 保存された配信データを取得
+          new Promise(resolve => {
+            chrome.storage.local.get(['streams', 'favorites', 'settings', 'lastUpdate'], (data) => {
+              resolve(data);
+            });
+          }),
+          // 保存されたタブ情報を取得
+          new Promise(resolve => {
+            chrome.storage.local.get(['lastActiveTab'], (data) => {
+              resolve(data.lastActiveTab || 'all');
+            });
+          }),
+          // API制限エラー情報を取得
+          new Promise(resolve => {
+            chrome.storage.local.get(['platformErrors'], (data) => {
+              resolve(data.platformErrors || {});
+            });
+          }),
+          // YouTube APIクォータエラー情報を特に取得
+          new Promise(resolve => {
+            chrome.storage.local.get(['youtubeQuotaError'], (data) => {
+              resolve(data.youtubeQuotaError || null);
+            });
+          })
+        ]);
+
+        // API制限エラー情報を設定
+        if (apiErrors && typeof apiErrors === 'object') {
+          platformErrors = { ...platformErrors, ...apiErrors };
+          console.log('API制限エラー情報を設定:', platformErrors);
+        }
+
+        // YouTube APIクォータエラーが明示的に存在する場合は必ずフラグを立てる
+        if (youtubeQuotaError) {
+          // 24時間以内のエラーなら有効
+          const errorAge = Date.now() - youtubeQuotaError.timestamp;
+          const HOURS_24 = 24 * 60 * 60 * 1000;
+          
+          if (errorAge < HOURS_24) {
+            platformErrors.youtube = true;
+            console.log('YouTubeのAPIクォータエラーフラグを設定しました（24時間以内のエラー）');
+          } else {
+            console.log('YouTubeのAPIクォータエラーは24時間以上経過しているため、リセット');
+          }
+        }
+
+        // 設定を適用
+        if (storedData.settings) {
+          settings = storedData.settings;
+          console.log('設定を読み込みました', settings);
+        } else {
+          settings = {
+            hoverInfoEnabled: true,
+            viewerCountEnabled: true,
+            platformIconEnabled: true,
+            favoriteIconEnabled: true,
+            platformUpdateOrder: ['twitch', 'youtube', 'twitcasting']
+          };
+        }
+        
+        // 配信データを適用
+        if (storedData.streams && storedData.streams.length > 0) {
+          allStreams = storedData.streams;
+          console.log(`${allStreams.length}件の配信データを読み込みました`);
+          
+          // プラットフォームごとにデータを振り分け
+          platformStreams.twitch = allStreams.filter(stream => stream.platform === 'twitch');
+          platformStreams.youtube = allStreams.filter(stream => stream.platform === 'youtube');
+          platformStreams.twitcasting = allStreams.filter(stream => stream.platform === 'twitcasting');
+          
+          console.log(`Twitch: ${platformStreams.twitch.length}件`);
+          console.log(`YouTube: ${platformStreams.youtube.length}件`);
+          console.log(`TwitCasting: ${platformStreams.twitcasting.length}件`);
+        }
+        
+        // お気に入りを適用
+        if (storedData.favorites) {
+          favorites = storedData.favorites;
+        }
+        
+        // 最終更新時間を表示
+        if (storedData.lastUpdate) {
+          statusMessage.textContent = `最終更新: ${Utils.formatDate(storedData.lastUpdate, 'time')}`;
+        }
+        
+        // 保存されたタブを設定
+        currentPlatformTab = lastTab;
+        console.log(`前回選択されていたタブを復元: ${currentPlatformTab}`);
+        
+        // タブUIを更新
+        updateTabUI();
+        
+        // 配信を表示（この時点でYouTubeエラーがあれば表示される）
+        displayStreams();
+        
+        // 前回の表示から1分以上経過していれば自動更新
+        const ONE_MINUTE = 60 * 1000; // 1分をミリ秒で表現
+        if (currentTime - (storedData.lastUpdate || 0) > ONE_MINUTE || !storedData.lastUpdate) {
+          console.log('前回の更新から1分以上経過したため、自動更新を実行します');
+          // UI更新が完了してから自動更新を開始
+          setTimeout(() => {
+            requestUpdate('all');
+          }, 300);
+        }
+      } catch (error) {
+        console.error('初期化中にエラーが発生しました:', error);
+        errorMessage.classList.remove('hidden');
+        errorMessage.textContent = '初期化エラー: ' + error.message;
       }
     } catch (error) {
       console.error('初期化中にエラーが発生しました:', error);
@@ -279,20 +300,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // タブ切り替えイベントリスナー
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      selectedTab = e.target.dataset.platform;
-      fetchPlatforms();
+  // タブ切り替えイベントリスナーを修正
+  tabButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+      // 前回のタブを記録
+      const previousTab = currentPlatformTab;
+      
+      // 現在のタブを更新
+      currentPlatformTab = e.target.dataset.platform;
+      
+      console.log(`タブを切り替え: ${previousTab} -> ${currentPlatformTab}`);
+      
+      // すべてのタブから active クラスを削除
+      tabButtons.forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      // クリックされたタブに active クラスを追加
+      e.target.classList.add('active');
+      
+      // 選択したタブを保存
+      chrome.storage.local.set({ 'lastActiveTab': currentPlatformTab }, () => {
+        console.log(`タブ "${currentPlatformTab}" を保存しました`);
+      });
+      
+      // グリッドを一旦クリア
+      if (streamsGrid) {
+        streamsGrid.innerHTML = '';
+      }
+      
+      // 新しいタブのデータを取得
+      if (currentPlatformTab === 'all') {
+        updatePlatformsInOrder();
+      } else {
+        requestUpdate(currentPlatformTab);
+      }
+      
+      // 表示を更新
+      displayStreams();
     });
   });
 
-  // ポップアップが開かれた時の処理
-  document.addEventListener('DOMContentLoaded', () => {
-    isOpen = true;
-    fetchInitialPlatform();
-  });
-  
   /**
    * ヘッダーボタンのアイコンを絵文字に更新
    */
@@ -386,40 +434,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.tabs.create({ url: 'schedule.html' });
       });
     }
-    
-    // タブ切り替え
-    tabButtons.forEach(button => {
-      button.addEventListener('click', (e) => {
-        // 前回のタブを記録
-        const previousTab = currentPlatformTab;
-        
-        // 現在のタブを更新
-        currentPlatformTab = e.target.dataset.platform;
-        
-        console.log(`タブを切り替え: ${previousTab} -> ${currentPlatformTab}`);
-        
-        // すべてのタブから active クラスを削除
-        tabButtons.forEach(btn => {
-          btn.classList.remove('active');
-        });
-        
-        // クリックされたタブに active クラスを追加
-        e.target.classList.add('active');
-        
-        // 選択したタブを保存 - chrome.storage.localを直接使用して確実に保存
-        chrome.storage.local.set({ 'lastActiveTab': currentPlatformTab }, () => {
-          console.log(`タブ "${currentPlatformTab}" を保存しました`);
-        });
-        
-        // グリッドを一旦クリア
-        if (streamsGrid) {
-          streamsGrid.innerHTML = '';
-        }
-        
-        // 表示を更新
-        displayStreams();
-      });
-    });
     
     // フィルターイベント
     if (platformCheckboxes && categoryFilter && channelFilter && viewerFilter && favoritesOnly) {
