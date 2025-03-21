@@ -81,11 +81,24 @@ let streams = [];
 let lastNotifiedStreams = [];
 let schedules = [];
 
+// プラットフォームごとの最新有効データを保持する変数を追加
+let lastValidData = {
+  twitch: { streams: [], timestamp: 0 },
+  youtube: { streams: [], timestamp: 0 },
+  twitcasting: { streams: [], timestamp: 0 }
+};
+
+// データの有効期限（12時間）
+const DATA_VALIDITY_DURATION = 12 * 60 * 60 * 1000;
+
 /**
- * 初期化処理
+ * 初期化処理を拡張
  */
 async function initialize() {
   console.log('バックグラウンドスクリプトを初期化しています');
+  
+  // 前回の有効なデータを読み込む
+  await loadLastValidData();
   
   // インストール・更新イベントリスナー
   chrome.runtime.onInstalled.addListener(handleInstalled);
@@ -371,93 +384,190 @@ function initializeApiClients() {
 }
 
 /**
- * すべてのプラットフォームの配信をチェック
- * @param {string} platformFilter - 特定のプラットフォームのみチェックする場合に指定 ('twitch', 'youtube', 'twitcasting')
+ * 前回の有効なデータを読み込む
+ */
+async function loadLastValidData() {
+  const data = await new Promise(resolve => {
+    chrome.storage.local.get(['lastValidData'], resolve);
+  });
+  
+  if (data.lastValidData) {
+    lastValidData = data.lastValidData;
+    console.log('前回の有効なデータを読み込みました:', 
+      Object.keys(lastValidData).map(platform => 
+        `${platform}: ${lastValidData[platform].streams.length}件`
+      ).join(', ')
+    );
+  }
+}
+
+/**
+ * プラットフォームの有効なデータを更新
+ */
+async function updateValidData(platform, newStreams) {
+  if (!newStreams || !Array.isArray(newStreams)) {
+    console.warn(`${platform}: 無効なデータフォーマット`);
+    return;
+  }
+
+  // データが空の場合は更新しない（エラー時の誤更新を防ぐ）
+  if (newStreams.length === 0) {
+    console.warn(`${platform}: 空のデータセットは保存しません`);
+    return;
+  }
+
+  lastValidData[platform] = {
+    streams: newStreams,
+    timestamp: Date.now()
+  };
+
+  // ストレージに保存
+  await new Promise(resolve => {
+    chrome.storage.local.set({ lastValidData }, resolve);
+  });
+
+  console.log(`${platform}: 有効なデータを更新しました (${newStreams.length}件)`);
+}
+
+/**
+ * プラットフォームの有効なデータを取得
+ */
+function getValidData(platform) {
+  const data = lastValidData[platform];
+  if (!data || !data.streams) return [];
+
+  // データの有効期限をチェック
+  if (Date.now() - data.timestamp > DATA_VALIDITY_DURATION) {
+    console.log(`${platform}: データが期限切れです`);
+    return [];
+  }
+
+  return data.streams;
+}
+
+/**
+ * すべてのプラットフォームの配信をチェック（改善版）
  */
 async function checkAllStreams(platformFilter = null) {
   try {
     let allStreams = [];
-    let promises = [];
-    
-    // 現在の配信データを保持
     const currentStreams = [...streams];
+    const errors = {};
     
     // Twitchのチェック
-    if ((platformFilter === null || platformFilter === 'all' || platformFilter === 'twitch') && 
-        authInfo.twitch.enabled && apiClients.twitch) {
-      promises.push(
-        apiClients.twitch.getFollowedStreams()
-          .then(result => {
-            console.log(`Twitch: ${result.length}件の配信を取得しました`);
-            allStreams = allStreams.concat(result);
-          })
-          .catch(error => {
-            console.error('Twitchの配信チェックエラー:', error);
-            // 認証エラーの場合はトークンをリフレッシュ
-            if (error.isAuthError) {
-              return refreshTwitchToken();
-            }
-            // エラーの場合は現在のデータを保持
-            const twitchStreams = currentStreams.filter(stream => stream.platform === 'twitch');
+    if (platformFilter === null || platformFilter === 'all' || platformFilter === 'twitch') {
+      try {
+        if (authInfo.twitch.enabled && apiClients.twitch) {
+          const twitchStreams = await apiClients.twitch.getFollowedStreams();
+          if (twitchStreams && twitchStreams.length > 0) {
+            await updateValidData('twitch', twitchStreams);
             allStreams = allStreams.concat(twitchStreams);
-          })
-      );
-    } else if (platformFilter !== 'all' && platformFilter !== 'twitch') {
-      // 指定外のプラットフォームは現在のデータを保持
-      const twitchStreams = currentStreams.filter(stream => stream.platform === 'twitch');
-      allStreams = allStreams.concat(twitchStreams);
+          } else {
+            // 取得に失敗した場合は前回の有効なデータを使用
+            const validTwitchData = getValidData('twitch');
+            if (validTwitchData.length > 0) {
+              console.log('Twitch: 前回の有効なデータを使用します', validTwitchData.length);
+              allStreams = allStreams.concat(validTwitchData);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Twitchの配信チェックエラー:', error);
+        errors.twitch = error;
+        
+        // エラー時は前回の有効なデータを使用
+        const validTwitchData = getValidData('twitch');
+        if (validTwitchData.length > 0) {
+          console.log('Twitch: エラーにより前回の有効なデータを使用します');
+          allStreams = allStreams.concat(validTwitchData);
+        }
+      }
+    } else {
+      // フィルタ外の場合は前回の有効なデータを使用
+      const validTwitchData = getValidData('twitch');
+      allStreams = allStreams.concat(validTwitchData);
     }
     
     // YouTubeのチェック
-    if ((platformFilter === null || platformFilter === 'all' || platformFilter === 'youtube') && 
-        authInfo.youtube.enabled && apiClients.youtube) {
-      promises.push(
-        apiClients.youtube.getLiveStreams()
-          .then(result => {
-            console.log(`YouTube: ${result.length}件の配信を取得しました`);
-            allStreams = allStreams.concat(result);
-          })
-          .catch(error => {
-            console.error('YouTubeの配信チェックエラー:', error);
-            // 認証エラーの場合はトークンをリフレッシュ
-            if (error.isAuthError) {
-              return refreshYouTubeToken();
-            }
-            // エラーの場合は現在のデータを保持
-            const youtubeStreams = currentStreams.filter(stream => stream.platform === 'youtube');
+    if (platformFilter === null || platformFilter === 'all' || platformFilter === 'youtube') {
+      try {
+        if (authInfo.youtube.enabled && apiClients.youtube) {
+          const youtubeStreams = await apiClients.youtube.getLiveStreams();
+          if (youtubeStreams && youtubeStreams.length > 0) {
+            await updateValidData('youtube', youtubeStreams);
             allStreams = allStreams.concat(youtubeStreams);
-          })
-      );
-    } else if (platformFilter !== 'all' && platformFilter !== 'youtube') {
-      // 指定外のプラットフォームは現在のデータを保持
-      const youtubeStreams = currentStreams.filter(stream => stream.platform === 'youtube');
-      allStreams = allStreams.concat(youtubeStreams);
+          } else {
+            // 取得に失敗した場合は前回の有効なデータを使用
+            const validYoutubeData = getValidData('youtube');
+            if (validYoutubeData.length > 0) {
+              console.log('YouTube: 前回の有効なデータを使用します', validYoutubeData.length);
+              allStreams = allStreams.concat(validYoutubeData);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('YouTubeの配信チェックエラー:', error);
+        errors.youtube = error;
+        
+        // エラー時は前回の有効なデータを使用
+        const validYoutubeData = getValidData('youtube');
+        if (validYoutubeData.length > 0) {
+          console.log('YouTube: エラーにより前回の有効なデータを使用します');
+          allStreams = allStreams.concat(validYoutubeData);
+        }
+      }
+    } else {
+      // フィルタ外の場合は前回の有効なデータを使用
+      const validYoutubeData = getValidData('youtube');
+      allStreams = allStreams.concat(validYoutubeData);
     }
     
     // TwitCastingのチェック
-    if ((platformFilter === null || platformFilter === 'all' || platformFilter === 'twitcasting') && 
-        authInfo.twitcasting.enabled && apiClients.twitcasting && authInfo.twitcasting.userIds.length > 0) {
-      promises.push(
-        apiClients.twitcasting.getLiveStreams(authInfo.twitcasting.userIds)
-          .then(result => {
-            console.log(`TwitCasting: ${result.length}件の配信を取得しました`);
-            allStreams = allStreams.concat(result);
-          })
-          .catch(error => {
-            console.error('TwitCastingの配信チェックエラー:', error);
-            // エラーの場合は現在のデータを保持
-            const twitcastingStreams = currentStreams.filter(stream => stream.platform === 'twitcasting');
+    if (platformFilter === null || platformFilter === 'all' || platformFilter === 'twitcasting') {
+      try {
+        if (authInfo.twitcasting.enabled && apiClients.twitcasting && 
+            authInfo.twitcasting.userIds.length > 0) {
+          const twitcastingStreams = await apiClients.twitcasting.getLiveStreams(
+            authInfo.twitcasting.userIds
+          );
+          if (twitcastingStreams && twitcastingStreams.length > 0) {
+            await updateValidData('twitcasting', twitcastingStreams);
             allStreams = allStreams.concat(twitcastingStreams);
-          })
-      );
-    } else if (platformFilter !== 'all' && platformFilter !== 'twitcasting') {
-      // 指定外のプラットフォームは現在のデータを保持
-      const twitcastingStreams = currentStreams.filter(stream => stream.platform === 'twitcasting');
-      allStreams = allStreams.concat(twitcastingStreams);
+          } else {
+            // 取得に失敗した場合は前回の有効なデータを使用
+            const validTwitcastingData = getValidData('twitcasting');
+            if (validTwitcastingData.length > 0) {
+              console.log('TwitCasting: 前回の有効なデータを使用します', validTwitcastingData.length);
+              allStreams = allStreams.concat(validTwitcastingData);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('TwitCastingの配信チェックエラー:', error);
+        errors.twitcasting = error;
+        
+        // エラー時は前回の有効なデータを使用
+        const validTwitcastingData = getValidData('twitcasting');
+        if (validTwitcastingData.length > 0) {
+          console.log('TwitCasting: エラーにより前回の有効なデータを使用します');
+          allStreams = allStreams.concat(validTwitcastingData);
+        }
+      }
+    } else {
+      // フィルタ外の場合は前回の有効なデータを使用
+      const validTwitcastingData = getValidData('twitcasting');
+      allStreams = allStreams.concat(validTwitcastingData);
     }
     
-    // すべてのチェックが完了するのを待つ
-    await Promise.allSettled(promises);
+    // 結果の検証
+    if (allStreams.length === 0 && Object.keys(errors).length > 0) {
+      console.warn('すべてのプラットフォームでエラーが発生し、有効なデータもありません');
+      // 前回のstreamsデータを使用
+      if (streams.length > 0) {
+        console.log('前回の統合データを使用します');
+        return streams;
+      }
+    }
     
     console.log(`全プラットフォーム合計: ${allStreams.length}件の配信を取得しました`);
     
