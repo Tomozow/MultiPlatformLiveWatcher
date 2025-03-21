@@ -140,6 +140,7 @@ function sendUpdateRequest(platform) {
     // 更新状態の表示を更新
     if (loader) {
       if (isAnyPlatformUpdating() || updateQueue.length > 0) {
+        loader.classList.remove('hidden');
         loader.textContent = getUpdatingMessage();
       } else {
         loader.classList.add('hidden');
