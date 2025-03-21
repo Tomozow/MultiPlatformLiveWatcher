@@ -109,96 +109,163 @@ async function initialize() {
   // アラームハンドラ
   chrome.alarms.onAlarm.addListener(handleAlarm);
   
-  // メッセージハンドラ
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('メッセージを受信しました:', message);
+// メッセージハンドラ
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('メッセージを受信しました:', message);
+  
+  // TwitCastingのキャッシュクリア専用メッセージ
+  if (message.action === 'clearTwitCastingCache') {
+    console.log('TwitCastingキャッシュのクリアリクエストを受信');
+    clearTwitCastingCache();
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  // 配信チェック要求
+  if (message.action === 'checkStreams') {
+    const platformFilter = message.platform || null;
+    const isUserInitiated = message.isUserInitiated || false;
+    console.log(`配信チェック要求を受信: プラットフォーム=${platformFilter || 'すべて'}, ユーザー開始=${isUserInitiated}`);
     
-    if (message.action === 'checkStreams') {
-      const platformFilter = message.platform || null;
-      console.log(`配信チェック要求を受信: プラットフォーム=${platformFilter || 'すべて'}`);
-      
-      checkAllStreams(platformFilter)
-        .then(streams => {
-          sendResponse({ success: true, streams });
-        })
-        .catch(error => {
-          console.error('配信チェックエラー:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      return true; // 非同期レスポンスを許可
+    checkAllStreams(platformFilter, isUserInitiated)
+      .then(streams => {
+        sendResponse({ success: true, streams });
+      })
+      .catch(error => {
+        console.error('配信チェックエラー:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 非同期レスポンスを許可
+  }
+  
+  // 更新キャンセルリクエスト
+  if (message.action === 'cancelUpdates') {
+    const platforms = message.platforms || [];
+    
+    if (settings.debugModeEnabled) {
+      console.log('更新キャンセルリクエスト:', platforms);
     }
     
-    if (message.action === 'checkSchedules') {
-      checkAllSchedules()
-        .then(schedules => {
-          sendResponse({ success: true, schedules });
-        })
-        .catch(error => {
-          console.error('スケジュールチェックエラー:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      return true; // 非同期レスポンスを許可
-    }
+    platforms.forEach(platform => {
+      if (activeRequests[platform] && activeRequests[platform].controller) {
+        if (settings.debugModeEnabled) {
+          console.log(`${platform}のリクエストをキャンセル`);
+        }
+        if (activeRequests[platform].controller.abort) {
+          activeRequests[platform].controller.abort();
+        }
+        activeRequests[platform].controller = null;
+        activeRequests[platform].isProcessing = false;
+      }
+    });
     
-    if (message.action === 'setReminder') {
-      const { scheduleId, reminderTime } = message;
-      setScheduleReminder(scheduleId, reminderTime)
-        .then(result => {
-          sendResponse({ success: true });
-        })
-        .catch(error => {
-          console.error('リマインダー設定エラー:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      return true; // 非同期レスポンスを許可
-    }
-    
-    if (message.action === 'twitchCallback') {
-      console.log('Twitchコールバックを受信:', message.hash);
-      sendResponse({ success: true });
-      return true; // 非同期レスポンスを許可
-    }
+    sendResponse({ success: true, message: '更新をキャンセルしました' });
+    return true;
+  }
+  
+  // スケジュールチェック要求
+  if (message.action === 'checkSchedules') {
+    checkAllSchedules()
+      .then(schedules => {
+        sendResponse({ success: true, schedules });
+      })
+      .catch(error => {
+        console.error('スケジュールチェックエラー:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 非同期レスポンスを許可
+  }
+  
+  // リマインダー設定
+  if (message.action === 'setReminder') {
+    const { scheduleId, reminderTime } = message;
+    setScheduleReminder(scheduleId, reminderTime)
+      .then(result => {
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.error('リマインダー設定エラー:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 非同期レスポンスを許可
+  }
+  
+  // Twitchコールバック
+  if (message.action === 'twitchCallback') {
+    console.log('Twitchコールバックを受信:', message.hash);
+    sendResponse({ success: true });
+    return true; // 非同期レスポンスを許可
+  }
 
-    if (message.action === 'settingsUpdated') {
-      console.log('設定更新メッセージを受信しました');
+  // 設定更新通知
+  if (message.action === 'settingsUpdated') {
+    console.log('設定更新メッセージを受信しました');
+    
+    // 受信した設定情報で更新
+    if (message.settings) {
+      settings = { ...settings, ...message.settings };
       
-      // 受信した設定情報で更新
-      if (message.settings) {
-        settings = { ...settings, ...message.settings };
+      if (settings.debugModeEnabled) {
+        console.log('設定更新: デバッグモードが有効になっています');
       }
       
-      if (message.authInfo) {
-        authInfo = { ...authInfo, ...message.authInfo };
-        
-        // APIクライアントを再初期化
-        initializeApiClients();
+      if (settings.testModeEnabled) {
+        console.log('設定更新: テストモードが有効になっています');
+      }
+    }
+    
+    // 認証情報が更新された場合（特にTwitCasting関連）
+    if (message.authInfo) {
+      const oldTwitCastingUserIds = authInfo.twitcasting?.userIds || [];
+      const newTwitCastingUserIds = message.authInfo.twitcasting?.userIds || [];
+      
+      // ユーザーIDリストに変更があったかチェック
+      const twitCastingUserIdsChanged = JSON.stringify(oldTwitCastingUserIds) !== JSON.stringify(newTwitCastingUserIds);
+      
+      // 認証情報を更新
+      authInfo = { ...authInfo, ...message.authInfo };
+      
+      // TwitCastingユーザーIDが変更された場合はキャッシュをクリア
+      if (twitCastingUserIdsChanged) {
+        console.log('TwitCastingユーザーIDが変更されたため、キャッシュをクリアします');
+        clearTwitCastingCache();
       }
       
-      // 応答を返す
-      sendResponse({ success: true });
+      // APIクライアントを再初期化
+      initializeApiClients();
+    }
+    
+    // 応答を返す
+    sendResponse({ success: true });
+    return true; // 非同期レスポンスを許可
+  }
+
+  // YouTube認証コールバック
+  if (message.action === 'youtubeAuthenticated') {
+    const authData = message.authInfo;
+    if (authData && authData.accessToken) {
+      console.log('YouTube認証データを受信しました');
+      authInfo.youtube.accessToken = authData.accessToken;
+      
+      // 有効期限を設定（秒をミリ秒に変換）
+      const expiresInMs = authData.expiresIn ? parseInt(authData.expiresIn) * 1000 : 3600000; // デフォルト1時間
+      authInfo.youtube.expiresAt = Date.now() + expiresInMs;
+      
+      // ストレージに保存
+      chrome.storage.local.set({ authInfo }, () => {
+        console.log('YouTube認証情報を保存しました');
+        sendResponse({ success: true });
+      });
+      
       return true; // 非同期レスポンスを許可
     }
-
-    if (message.action === 'youtubeAuthenticated') {
-      const authData = message.authInfo;
-      if (authData && authData.accessToken) {
-        console.log('YouTube認証データを受信しました');
-        authInfo.youtube.accessToken = authData.accessToken;
-        
-        // 有効期限を設定（秒をミリ秒に変換）
-        const expiresInMs = authData.expiresIn ? parseInt(authData.expiresIn) * 1000 : 3600000; // デフォルト1時間
-        authInfo.youtube.expiresAt = Date.now() + expiresInMs;
-        
-        // ストレージに保存
-        chrome.storage.local.set({ authInfo }, () => {
-          console.log('YouTube認証情報を保存しました');
-          sendResponse({ success: true });
-        });
-        
-        return true; // 非同期レスポンスを許可
-      }
-    }
-  });
+  }
+  
+  // 対応していないアクションの場合
+  console.warn('未処理のアクション:', message.action);
+  sendResponse({ success: false, error: '未対応のアクション' });
+  return true;
+});
   
   // リダイレクト監視用のリスナー
   chrome.webNavigation.onBeforeNavigate.addListener(function(details) {
@@ -2062,17 +2129,28 @@ class TwitCastingApiClient {
       return streams;
     }
     
-    // 無効なユーザーIDを検出して除外するための正規表現
-    // TwitCastingのユーザーIDは通常、英数字とアンダースコアで構成される
-    const validUserIdPattern = /^[a-zA-Z0-9_]+$/;
-    const validUserIds = userIds.filter(userId => validUserIdPattern.test(userId));
+    // デバッグ: すべての入力IDをログ出力
+    console.log('TwitCasting: 入力されたユーザーID一覧:', userIds);
+
+    // ユーザーIDの検証をより柔軟に行う
+    // 基本的には入力されたIDをすべて受け入れ、明らかに無効なもの（空文字やスペースのみなど）だけを除外
+    const validUserIds = userIds.filter(userId => {
+      // 空文字やnullなどを除外
+      if (!userId || userId.trim() === '') {
+        return false;
+      }
+      
+      // 各IDごとにログ出力
+      console.log(`TwitCasting: ユーザーID「${userId}」を処理します`);
+      return true;
+    });
     
     if (validUserIds.length === 0) {
       console.log('TwitCasting: 有効なユーザーIDがありません');
       return streams;
     }
     
-    console.log(`TwitCasting: ${validUserIds.length}件の有効なユーザーIDを処理します`);
+    console.log(`TwitCasting: ${validUserIds.length}件のユーザーIDを処理します`);
     
     // 各ユーザーIDについて処理
     for (const userId of validUserIds) {
@@ -2083,6 +2161,7 @@ class TwitCastingApiClient {
         // ユーザー情報を取得（アイコンURL取得のため）
         let userIcon = null;
         try {
+          console.log(`TwitCasting: ユーザー「${userId}」の情報を取得中...`);
           const userInfoResponse = await this.request(`/users/${userId}`);
           userIcon = userInfoResponse.user?.profile?.image || null;
         } catch (userError) {

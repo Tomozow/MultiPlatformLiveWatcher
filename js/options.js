@@ -784,9 +784,6 @@ function updateUI() {
       return;
     }
     
-    // IDのバリデーション：コロン(:)を含むIDも許可
-    // コロンを含むユーザーIDも有効にする
-    
     // 追加
     authInfo.twitcasting.userIds.push(userId);
     
@@ -796,9 +793,17 @@ function updateUI() {
     // 入力フィールドをクリア
     newUserId.value = '';
     
+    // IDを追加したら設定を保存し、キャッシュをクリア
+    saveSettings();
+    
+    // TwitCastingのキャッシュをクリアするメッセージを送信
+    chrome.runtime.sendMessage({ 
+      action: 'clearTwitCastingCache'
+    });
+    
     showStatusMessage('ユーザーIDが追加されました');
   }
-  
+
   /**
    * TwitCastingユーザーIDの削除
    * @param {string} userId - 削除するユーザーID
@@ -810,6 +815,14 @@ function updateUI() {
     
     // UI更新
     updateUserIdsList();
+    
+    // IDを削除したら設定を保存し、キャッシュをクリア
+    saveSettings();
+    
+    // TwitCastingのキャッシュをクリアするメッセージを送信
+    chrome.runtime.sendMessage({ 
+      action: 'clearTwitCastingCache'
+    });
     
     showStatusMessage('ユーザーIDが削除されました');
   }
