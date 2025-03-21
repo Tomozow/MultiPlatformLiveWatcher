@@ -174,16 +174,16 @@ function handleUpdateError(platform, errorMsg) {
   // エラーメッセージ要素が存在する場合
   if (errorMessage) {
     if (platform === 'youtube' && errorMsg.includes('quota')) {
-      // YouTubeのクォータエラーの場合は特別なメッセージを表示
+      // YouTubeのクォータエラーの場合は特別なメッセージを表示（より簡潔に）
       errorMessage.innerHTML = `
         <div class="api-error-container">
-          <p>YouTube APIの制限に達しました。制限は24時間後にリセットされます。</p>
+          <p>YouTube API制限に達しました。24時間後にリセットされます。</p>
           <a href="https://www.youtube.com/subscriptions" target="_blank" class="youtube-link-button">YouTubeを開く</a>
         </div>`;
       errorMessage.classList.remove('hidden');
     } else {
-      // 通常のエラーメッセージ
-      errorMessage.textContent = `${platform}の更新に失敗しました: ${errorMsg}`;
+      // 通常のエラーメッセージ（短くシンプルに）
+      errorMessage.textContent = `${platform}の更新エラー: ${errorMsg.slice(0, 50)}${errorMsg.length > 50 ? '...' : ''}`;
       errorMessage.classList.remove('hidden');
     }
   }
@@ -191,5 +191,20 @@ function handleUpdateError(platform, errorMsg) {
   // ステータスメッセージも更新
   if (statusMessage) {
     statusMessage.textContent = `最終更新: ${Utils.formatDate(new Date(), 'time')} (一部エラー)`;
+  }
+}
+
+/**
+ * 更新中のプラットフォームを示すメッセージを取得
+ * @returns {string} 更新メッセージ
+ */
+function getUpdatingMessage() {
+  const updating = Object.keys(updatingPlatforms).filter(p => updatingPlatforms[p]);
+  if (updating.length === 0 && updateQueue.length > 0) {
+    return `${updateQueue[0]}の更新準備中...`;
+  } else if (updating.length === 1) {
+    return `${updating[0]}を更新中...`;
+  } else {
+    return `複数のプラットフォームを更新中...`;
   }
 } 
