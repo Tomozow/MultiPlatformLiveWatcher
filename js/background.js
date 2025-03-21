@@ -1157,115 +1157,208 @@ class YouTubeApiClient {
     this.SUBSCRIPTION_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24時間
     this.LIVESTREAMS_CACHE_DURATION = 5 * 60 * 1000;        // 5分
     this.UPCOMING_CACHE_DURATION = 30 * 60 * 1000;          // 30分
+    
+    // クォータ関連の設定を追加
+    this.dailyQuotaUsage = 0;
+    this.quotaResetTime = this.getNextQuotaResetTime();
+    this.maxDailyQuota = 10000; // YouTubeの1日の標準クォータ数
+    this.quotaUsageHistory = [];
+    this.lastQuotaReset = Date.now();
+    
+    // APIコスト管理（各エンドポイントごとのクォータコスト）
+    this.apiCosts = {
+      '/search': 100,
+      '/videos': 1,
+      '/channels': 1,
+      '/subscriptions': 1
+    };
+    
+    // ロードバランシング用に時間をずらす
+    this.loadBalanceOffset = Math.floor(Math.random() * 60) * 1000; // 0-60秒のランダム遅延
   }
   
-/**
- * APIリクエストを送信
- * @param {string} endpoint - APIエンドポイント
- * @param {Object} params - URLパラメータ
- * @param {boolean} useAuth - 認証を使用するかどうか
- * @returns {Promise<Object>} レスポンスデータ
- */
-async request(endpoint, params = {}, useAuth = true) {
-  const url = new URL(`${this.baseUrl}${endpoint}`);
-  
-  // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
-  url.searchParams.append('key', this.apiKey);
-  
-  // パラメータを追加
-  Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach(item => {
-        url.searchParams.append(key, item);
-      });
-    } else {
-      url.searchParams.append(key, value);
-    }
-  });
-  
-  try {
-    const headers = {};
+  /**
+   * 次のクォータリセット時間を計算（米国太平洋時間の0時）
+   */
+  getNextQuotaResetTime() {
+    const now = new Date();
+    const resetDate = new Date(now);
+    resetDate.setUTCHours(7, 0, 0, 0); // UTC 7:00 = PST 0:00
     
-    if (useAuth && this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    if (resetDate <= now) {
+      // 今日のリセット時間を過ぎていれば、明日のリセット時間を返す
+      resetDate.setUTCDate(resetDate.getUTCDate() + 1);
     }
     
-    console.log(`YouTube API リクエスト: ${endpoint}`, 
-              {useAuth: useAuth, hasToken: !!this.accessToken});
+    return resetDate.getTime();
+  }
+  
+  /**
+   * 利用可能なクォータをチェック
+   * @param {string} endpoint - 使用するエンドポイント
+   * @returns {boolean} - クォータが利用可能かどうか
+   */
+  hasAvailableQuota(endpoint) {
+    const now = Date.now();
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers
+    // クォータリセット日をチェック
+    if (now >= this.quotaResetTime) {
+      this.dailyQuotaUsage = 0;
+      this.quotaResetTime = this.getNextQuotaResetTime();
+      this.quotaUsageHistory = [];
+      this.lastQuotaReset = now;
+      console.log('YouTube: クォータカウンターをリセットしました');
+    }
+    
+    // 必要なクォータを計算
+    const requiredQuota = this.apiCosts[endpoint] || 1;
+    
+    // クォータ制限に近づいている場合、優先度の高い操作のみ許可
+    const isHighPriority = endpoint === '/videos' || endpoint === '/channels';
+    const quotaThreshold = this.maxDailyQuota * 0.9; // 90%に達したら制限
+    
+    if (this.dailyQuotaUsage + requiredQuota > this.maxDailyQuota) {
+      console.log('YouTube: クォータ上限に達しました');
+      return false;
+    }
+    
+    if (!isHighPriority && this.dailyQuotaUsage > quotaThreshold) {
+      console.log('YouTube: クォータ閾値を超えたため、低優先度のリクエストを拒否します');
+      return false;
+    }
+    
+    return true;
+  }
+  
+  /**
+   * APIリクエストを送信（クォータ管理を追加）
+   */
+  async request(endpoint, params = {}, useAuth = true) {
+    // クォータチェック
+    if (!this.hasAvailableQuota(endpoint)) {
+      const quotaError = new Error('クォータ制限のため、リクエストを実行できません');
+      quotaError.isQuotaError = true;
+      throw quotaError;
+    }
+    
+    // ロードバランシング用の遅延を追加
+    await new Promise(resolve => setTimeout(resolve, this.loadBalanceOffset));
+    
+    const url = new URL(`${this.baseUrl}${endpoint}`);
+    
+    // APIキーを追加（認証の場合でも必要なエンドポイントがあるため）
+    url.searchParams.append('key', this.apiKey);
+    
+    // パラメータを追加
+    Object.entries(params).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(item => {
+          url.searchParams.append(key, item);
+        });
+      } else {
+        url.searchParams.append(key, value);
+      }
     });
     
-    if (!response.ok) {
-      // 詳細なエラー情報を取得
-      let errorDetails = '';
-      let errorJson = null;
+    try {
+      const headers = {};
       
-      try {
-        errorJson = await response.json();
-        errorDetails = JSON.stringify(errorJson);
-      } catch (e) {
-        errorDetails = await response.text();
+      if (useAuth && this.accessToken) {
+        headers['Authorization'] = `Bearer ${this.accessToken}`;
       }
       
-      if (response.status === 401) {
-        const error = new Error(`認証エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 403) {
-        // クォータ超過エラーの特別処理
-        if (errorJson && errorJson.error && 
-            (errorJson.error.errors?.some(e => e.reason === 'quotaExceeded') || 
-             errorDetails.includes('quota'))) {
-          const error = new Error(`クォータ超過: ${errorDetails}`);
-          error.isQuotaError = true;
-          console.error('YouTube APIクォータ制限に達しました:', errorDetails);
-          throw error;
+      console.log(`YouTube API リクエスト: ${endpoint}`, 
+                {useAuth: useAuth, hasToken: !!this.accessToken});
+      
+      // クォータ使用量を先に記録
+      const cost = this.apiCosts[endpoint] || 1;
+      this.dailyQuotaUsage += cost;
+      
+      // クォータ使用履歴を記録
+      this.quotaUsageHistory.push({
+        endpoint,
+        cost,
+        timestamp: Date.now()
+      });
+      
+      // リクエスト実行
+      const response = await fetch(url, {
+        method: 'GET',
+        headers
+      });
+      
+      if (!response.ok) {
+        // 詳細なエラー情報を取得
+        let errorDetails = '';
+        let errorJson = null;
+        
+        try {
+          errorJson = await response.json();
+          errorDetails = JSON.stringify(errorJson);
+        } catch (e) {
+          errorDetails = await response.text();
         }
         
-        const error = new Error(`権限エラー: ${errorDetails}`);
-        error.isAuthError = true;
-        throw error;
-      } else if (response.status === 429) {
-        const error = new Error(`レート制限超過: ${errorDetails}`);
-        error.isRateLimitError = true;
-        throw error;
+        if (response.status === 401) {
+          const error = new Error(`認証エラー: ${errorDetails}`);
+          error.isAuthError = true;
+          throw error;
+        } else if (response.status === 403) {
+          // クォータ超過エラーの特別処理
+          if (errorJson && errorJson.error && 
+              (errorJson.error.errors?.some(e => e.reason === 'quotaExceeded') || 
+               errorDetails.includes('quota'))) {
+            const error = new Error(`クォータ超過: ${errorDetails}`);
+            error.isQuotaError = true;
+            console.error('YouTube APIクォータ制限に達しました:', errorDetails);
+            throw error;
+          }
+          
+          const error = new Error(`権限エラー: ${errorDetails}`);
+          error.isAuthError = true;
+          throw error;
+        } else if (response.status === 429) {
+          const error = new Error(`レート制限超過: ${errorDetails}`);
+          error.isRateLimitError = true;
+          throw error;
+        }
+        throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
       }
-      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorDetails}`);
-    }
-    
-    return response.json();
-  } catch (error) {
-    console.error(`YouTube API Error at ${endpoint}:`, error);
-    
-    // エラーに重要な情報がない場合は補足
-    if (!error.isAuthError && !error.isQuotaError && !error.isRateLimitError) {
-      // エラーメッセージにクォータ関連の文字列が含まれていないか確認
-      if (error.message && (
-          error.message.includes('quota') || 
-          error.message.includes('クォータ') || 
-          error.message.includes('利用上限')
-        )) {
-        error.isQuotaError = true;
+      
+      return response.json();
+    } catch (error) {
+      console.error(`YouTube API Error at ${endpoint}:`, error);
+      
+      // エラーに重要な情報がない場合は補足
+      if (!error.isAuthError && !error.isQuotaError && !error.isRateLimitError) {
+        // エラーメッセージにクォータ関連の文字列が含まれていないか確認
+        if (error.message && (
+            error.message.includes('quota') || 
+            error.message.includes('クォータ') || 
+            error.message.includes('利用上限')
+          )) {
+          error.isQuotaError = true;
+        }
       }
+      
+      throw error;
     }
-    
-    throw error;
   }
-}
   
   /**
    * チャンネル登録情報を取得（キャッシュ対応）
    * @returns {Promise<Array>} チャンネル登録情報
    */
   async getSubscriptions() {
+    // キャッシュ期間をユーザーの活動状況に応じて動的に調整
+    const activeUserAdjustment = this.isActiveUser() ? 0.5 : 1.5;
+    const effectiveCacheDuration = this.SUBSCRIPTION_CACHE_DURATION * activeUserAdjustment;
+    
     const now = Date.now();
     
     // キャッシュが有効な場合はキャッシュを返す
     if (this.subscriptions.length > 0 && 
-        now - this.lastSubscriptionsCheck < this.SUBSCRIPTION_CACHE_DURATION) {
+        now - this.lastSubscriptionsCheck < effectiveCacheDuration) {
       console.log('YouTube: サブスクリプションキャッシュを使用');
       return this.subscriptions;
     }
@@ -1315,11 +1408,28 @@ async getLiveStreams() {
     // 現在時刻を取得
     const now = Date.now();
     
+    // キャッシュ期間を動的に調整（日中は短く、深夜は長く）
+    const hourOfDay = new Date().getHours();
+    const isDaytime = hourOfDay >= 8 && hourOfDay <= 23;
+    const cacheDuration = isDaytime ? 
+      this.LIVESTREAMS_CACHE_DURATION : 
+      this.LIVESTREAMS_CACHE_DURATION * 2;
+    
     // キャッシュが有効な場合はキャッシュを使用
     if (this.cachedLiveStreams.length > 0 && 
-        now - this.lastLiveStreamsCheck < this.LIVESTREAMS_CACHE_DURATION) {
+        now - this.lastLiveStreamsCheck < cacheDuration) {
       console.log('YouTube: ライブ配信キャッシュを使用（更新間隔内）');
       return this.cachedLiveStreams;
+    }
+    
+    // クォータ使用量が上限に近づいている場合はキャッシュ期間を延長
+    if (this.dailyQuotaUsage > this.maxDailyQuota * 0.7) {
+      if (this.cachedLiveStreams.length > 0) {
+        console.log('YouTube: クォータ消費を抑えるためキャッシュ期間を延長します');
+        // クォータ消費量が多いときはキャッシュの期限を更新して返す
+        this.lastLiveStreamsCheck = now - (cacheDuration / 2); // 期限を半分だけ更新
+        return this.cachedLiveStreams;
+      }
     }
     
     // 認証情報を確認
@@ -1724,6 +1834,38 @@ async getLiveStreams() {
       
       return [];
     }
+  }
+
+  /**
+   * ストレージにクォータ使用状況を保存
+   */
+  async saveQuotaStats() {
+    await new Promise(resolve => {
+      chrome.storage.local.set({
+        youtubeQuotaStats: {
+          dailyUsage: this.dailyQuotaUsage,
+          resetTime: this.quotaResetTime,
+          lastUpdate: Date.now()
+        }
+      }, resolve);
+    });
+  }
+  
+  /**
+   * ストレージからクォータ使用状況を読み込み
+   */
+  async loadQuotaStats() {
+    return new Promise(resolve => {
+      chrome.storage.local.get(['youtubeQuotaStats'], (data) => {
+        if (data.youtubeQuotaStats) {
+          this.dailyQuotaUsage = data.youtubeQuotaStats.dailyUsage || 0;
+          this.quotaResetTime = data.youtubeQuotaStats.resetTime || this.getNextQuotaResetTime();
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      });
+    });
   }
 }
 /**
