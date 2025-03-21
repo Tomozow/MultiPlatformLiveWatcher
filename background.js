@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // 処理完了後
     activeRequests[platform] = null;
-    sendResponse({ success: true, streams: [...] });
+    sendResponse({ success: true, streams: [] });
     
     return true;
   }
