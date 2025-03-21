@@ -21,6 +21,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   const platformIconEnabled = document.getElementById('platform-icon-enabled');
   const favoriteIconEnabled = document.getElementById('favorite-icon-enabled');
   
+  // デバッグ・テストモード設定
+  const debugModeEnabled = document.getElementById('debug-mode-enabled');
+  const testModeEnabled = document.getElementById('test-mode-enabled');
+  
   // Twitch設定
   const twitchEnabled = document.getElementById('twitch-enabled');
   const twitchClientId = document.getElementById('twitch-client-id');
@@ -69,6 +73,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     viewerCountEnabled: true,
     platformIconEnabled: true,
     favoriteIconEnabled: true,
+    debugModeEnabled: false,
+    testModeEnabled: false,
     scheduleUpdateInterval: 60,
     defaultScheduleView: 'day',
     defaultReminderTime: 15
@@ -247,6 +253,10 @@ function updateUI() {
   if (platformIconEnabled) platformIconEnabled.checked = settings.platformIconEnabled !== false;
   if (favoriteIconEnabled) favoriteIconEnabled.checked = settings.favoriteIconEnabled !== false;
   
+  // デバッグ・テストモード設定
+  if (debugModeEnabled) debugModeEnabled.checked = settings.debugModeEnabled === true;
+  if (testModeEnabled) testModeEnabled.checked = settings.testModeEnabled === true;
+  
   // プラットフォーム更新順序を反映
   updatePlatformOrderUI();
   
@@ -408,6 +418,10 @@ function updateUI() {
     if (viewerCountEnabled) settings.viewerCountEnabled = viewerCountEnabled.checked;
     if (platformIconEnabled) settings.platformIconEnabled = platformIconEnabled.checked;
     if (favoriteIconEnabled) settings.favoriteIconEnabled = favoriteIconEnabled.checked;
+    
+    // デバッグ・テストモード設定を取得
+    if (debugModeEnabled) settings.debugModeEnabled = debugModeEnabled.checked;
+    if (testModeEnabled) settings.testModeEnabled = testModeEnabled.checked;
     
     // スケジュール設定を取得
     if (scheduleUpdateInterval) settings.scheduleUpdateInterval = parseInt(scheduleUpdateInterval.value);

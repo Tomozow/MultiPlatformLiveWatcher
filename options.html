@@ -83,6 +83,25 @@
           </label>
         </div>
         
+        <!-- デバッグ・テストモード設定を追加 -->
+        <h3>デバッグ・テストモード</h3>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="debug-mode-enabled">
+            デバッグモードを有効にする
+          </label>
+          <p class="setting-description">APIリクエストや内部処理の詳細なログをコンソールに出力します</p>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="test-mode-enabled">
+            テストモードを有効にする
+          </label>
+          <p class="setting-description">実際のAPIを呼び出す代わりにテストデータを使用します</p>
+        </div>
+        
         <!-- 更新順序の設定を追加 -->
         <h3>プラットフォーム更新順序</h3>
         <div class="form-group">
