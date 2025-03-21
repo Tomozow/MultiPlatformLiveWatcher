@@ -96,8 +96,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // 現在のタブに応じたデータのみを更新
       if (currentPlatformTab === 'all') {
-        updatePlatformsInOrder();
+        // すべてのプラットフォームのデータを表示（更新はしない）
+        displayStreams();
       } else {
+        // 特定のプラットフォームのみ更新
         requestUpdate(currentPlatformTab);
       }
       
